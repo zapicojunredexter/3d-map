@@ -5,10 +5,13 @@ import {
   ROAD_TILE_METERS,
   createRoadMaterial,
 } from './roadMaps'
+import { WATER_TILE_METERS, createWaterMaterial } from './waterMaps'
+import { expandWaterwayLines } from './waterways'
 import { applyRoadEdge } from './roadEdges'
 
 // TopoExport ships flat colour and no UVs, so the ground reads as blank white
-// card. Roads still get a procedural tile; lawns use the ambientCG grass pack.
+// card. Roads and lawns use ambientCG packs; waterways get a wet physical
+// material that picks up the day HDRI environment for reflections.
 
 export const TEXTURE_SIZE = 512
 
@@ -230,6 +233,11 @@ export const SURFACES = [
     tile: GRASS_TILE_METERS,
     kind: 'grass',
   },
+  {
+    layer: 'TPX_Waterways',
+    tile: WATER_TILE_METERS,
+    kind: 'water',
+  },
 ]
 
 export function createSurfaceTexture(surface, { anisotropy = 1 } = {}) {
@@ -256,12 +264,31 @@ export function applySurfaces(group, options = {}) {
     makeTexture = createSurfaceTexture,
     makeGrassMaterial = createGrassMaterial,
     makeRoadMaterial = createRoadMaterial,
+    makeWaterMaterial = createWaterMaterial,
     anisotropy = 1,
   } = options
+
+  // Polylines first: the survey's rivers are strokes, not filled basins.
+  expandWaterwayLines(group, { makeWaterMaterial })
 
   for (const surface of SURFACES) {
     for (const mesh of group.children) {
       if (!mesh.isMesh || mesh.name !== surface.layer) continue
+
+      // Ribbons already carry UVs; still ensure every water mesh is wet.
+      if (surface.kind === 'water') {
+        if (!mesh.geometry.getAttribute('uv')) {
+          const uv = planarUv(mesh.geometry, surface.tile, surface.aspect ?? 1)
+          mesh.geometry.setAttribute('uv', uv)
+          mesh.geometry.setAttribute('uv2', uv)
+        }
+        mesh.material = makeWaterMaterial(mesh.material.side ?? THREE.DoubleSide)
+        mesh.material.polygonOffset = true
+        mesh.material.polygonOffsetFactor = -1
+        mesh.material.polygonOffsetUnits = -1
+        mesh.renderOrder = 1
+        continue
+      }
 
       const uv = planarUv(mesh.geometry, surface.tile, surface.aspect ?? 1)
       mesh.geometry.setAttribute('uv', uv)

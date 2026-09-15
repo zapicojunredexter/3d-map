@@ -158,6 +158,7 @@ describe('applySurfaces', () => {
       'TPX_RoadsOutlines',
       'TPX_Ground',
       'TPX_GreenAreas',
+      'TPX_Waterways',
       'TPX_Buildings',
     ]) {
       const mesh = new THREE.Mesh(
@@ -186,19 +187,25 @@ describe('applySurfaces', () => {
         new THREE.MeshStandardMaterial({ map: new THREE.Texture(), side }),
       makeRoadMaterial: (side) =>
         new THREE.MeshStandardMaterial({ map: new THREE.Texture(), side }),
+      makeWaterMaterial: (side) =>
+        new THREE.MeshPhysicalMaterial({ color: '#1f6f8f', side }),
     })
 
-  it('textures the ground, road and green surfaces only', () => {
+  it('textures the ground, road, green and water surfaces only', () => {
     const group = buildWorld()
     withMocks(group)
 
     const textured = group.children
-      .filter((child) => child.material?.map)
+      .filter(
+        (child) =>
+          child.material?.map || child.name === 'TPX_Waterways',
+      )
       .map((child) => child.name)
     expect(textured.sort()).toEqual([
       'TPX_GreenAreas',
       'TPX_Ground',
       'TPX_RoadsOutlines',
+      'TPX_Waterways',
     ])
   })
 
@@ -241,13 +248,23 @@ describe('applySurfaces', () => {
       'TPX_RoadsOutlines',
       'TPX_Ground',
       'TPX_GreenAreas',
+      'TPX_Waterways',
     ])
   })
 
-  it('uses photo packs for roads, ground and parks', () => {
+  it('uses photo packs for roads, ground and parks, and a wet material for water', () => {
     expect(SURFACES.find((s) => s.layer === 'TPX_RoadsOutlines').kind).toBe('road')
     expect(SURFACES.find((s) => s.layer === 'TPX_Ground').kind).toBe('grass')
     expect(SURFACES.find((s) => s.layer === 'TPX_GreenAreas').kind).toBe('grass')
+    expect(SURFACES.find((s) => s.layer === 'TPX_Waterways').kind).toBe('water')
+  })
+
+  it('gives water a glossy physical material', () => {
+    const group = buildWorld()
+    withMocks(group)
+    const water = group.children.find((c) => c.name === 'TPX_Waterways')
+    expect(water.material.isMeshPhysicalMaterial).toBe(true)
+    expect(water.geometry.getAttribute('uv')).toBeDefined()
   })
 
   it('gives photo layers a second UV set for ambient occlusion', () => {

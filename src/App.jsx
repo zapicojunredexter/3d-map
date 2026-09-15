@@ -25,6 +25,7 @@ import {
   solidMeshes,
 } from './mergeWorld'
 import { applySurfaces } from './surfaces'
+import { DAY_HDRI_URL } from './waterMaps'
 import { canopyTest, treePlacements } from './treeInstances'
 import {
   BUILDINGS_LAYER,
@@ -419,7 +420,7 @@ function Scene({
             buildingStyle={buildingStyle}
             highlight={highlight}
           />
-          <Environment preset="park" />
+          <Environment files={DAY_HDRI_URL} />
         </Suspense>
       </ModelErrorBoundary>
       <ExplorerControls
