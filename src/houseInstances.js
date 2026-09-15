@@ -7,18 +7,21 @@ import {
 import { FEATURE_ID } from './mergeWorld'
 import { createRandom } from './surfaces'
 import { chunkPlacements, placementMatrix } from './treeInstances'
+import { HOUSE_CATALOG, pickHouseModel } from './houseCatalog'
 
 // The export's buildings are white extrusions, but they are correctly placed
-// and sized, so they work as plots: one house model, scaled into each
-// footprint. The blocks stay in the scene as invisible colliders, which keeps
-// walls solid and keeps the crosshair able to name what it is pointing at.
+// and sized, so they work as plots: house models are chosen per footprint and
+// scaled to fill that plot (matching the invisible collider). The blocks stay
+// in the scene as colliders, which keeps walls solid and keeps the crosshair
+// able to name what it is pointing at.
 
 export const HOUSE_CELL_SIZE = 120
 export const HOUSE_SEED = 20260916
 
 // Houses that exactly fill their plot meet their neighbours with no seam, and
-// roofs interpenetrate along shared walls.
-export const FOOTPRINT_INSET = 0.96
+// roofs interpenetrate along shared walls. A little inset keeps a gap so shared
+// walls do not z-fight, while still matching the invisible collider closely.
+export const FOOTPRINT_INSET = 0.98
 
 export const HOUSE_HIGHLIGHT = { color: '#ffd08a', strength: 0.55 }
 
@@ -82,9 +85,9 @@ export function buildingPlacements(mesh, placement) {
   return placements
 }
 
-// Rebasing to a unit box standing on y=0 lets an instance matrix carry nothing
-// but the plot it has to fill, so no plot dimension has to be known here.
-export function normalizeHouseModel(scene) {
+// Rebase to height=1 on y=0, keeping the asset's footprint ratios. Instance
+// matrices then scale uniformly, so a cottage does not get stretched into a hall.
+export function normalizeHouseModel(scene, catalogEntry = null) {
   scene.updateMatrixWorld(true)
   const bounds = new THREE.Box3()
   const parts = []
@@ -101,8 +104,10 @@ export function normalizeHouseModel(scene) {
 
   const size = bounds.getSize(new THREE.Vector3())
   const center = bounds.getCenter(new THREE.Vector3())
+  if (size.y <= 0) throw new Error('House model has no height')
+
   const rebase = new THREE.Matrix4()
-    .makeScale(1 / size.x, 1 / size.y, 1 / size.z)
+    .makeScale(1 / size.y, 1 / size.y, 1 / size.y)
     .multiply(
       new THREE.Matrix4().makeTranslation(-center.x, -bounds.min.y, -center.z),
     )
@@ -113,17 +118,29 @@ export function normalizeHouseModel(scene) {
     part.geometry.computeBoundingSphere()
   }
 
-  return { parts, ridgeAlongX: size.x >= size.z }
+  return {
+    id: catalogEntry?.id ?? parts[0]?.name ?? 'house',
+    catalogEntry,
+    parts,
+    ridgeAlongX: size.x >= size.z,
+    width: size.x / size.y,
+    depth: size.z / size.y,
+    height: 1,
+    native: catalogEntry?.native ?? { x: size.x, y: size.y, z: size.z },
+  }
 }
 
 export function instanceMatrices(
   placements,
+  model,
   random = createRandom(HOUSE_SEED),
   inset = FOOTPRINT_INSET,
 ) {
   const position = new THREE.Vector3()
   const quaternion = new THREE.Quaternion()
   const scale = new THREE.Vector3()
+  const modelAlong = model.ridgeAlongX ? model.width : model.depth
+  const modelAcross = model.ridgeAlongX ? model.depth : model.width
 
   return placements.map((placement) => {
     // The model's ridge runs along its own x. Turning it on the deeper plots
@@ -135,9 +152,15 @@ export function instanceMatrices(
     const along = turned ? placement.depth : placement.width
     const across = turned ? placement.width : placement.depth
 
+    // Fill the plot (same volume the invisible block collides with). Model
+    // picking keeps the stretch mild; leaving empty margin made "ghost walls".
     position.set(placement.x, placement.y, placement.z)
     quaternion.setFromAxisAngle(UP, yaw)
-    scale.set(along * inset, placement.height, across * inset)
+    scale.set(
+      (along * inset) / modelAlong,
+      placement.height / model.height,
+      (across * inset) / modelAcross,
+    )
     return new THREE.Matrix4().compose(position, quaternion, scale)
   })
 }
@@ -166,42 +189,90 @@ function cellGeometry(source, featureIds) {
   return geometry
 }
 
-export function buildHouses({ parts }, placements, cellSize = HOUSE_CELL_SIZE) {
-  const group = new THREE.Group()
-  group.name = 'TPX_Houses'
-  const materials = parts.map((part) => houseMaterial(part.material))
-  const random = createRandom(HOUSE_SEED)
+function asModelList(modelOrModels) {
+  return Array.isArray(modelOrModels) ? modelOrModels : [modelOrModels]
+}
 
-  for (const cell of chunkPlacements(placements, cellSize)) {
-    const matrices = instanceMatrices(cell, random)
-    // One attribute per cell, shared by that cell's parts.
-    const featureIds = new THREE.InstancedBufferAttribute(
-      Float32Array.from(cell, (placement) => placement.slot),
-      1,
-    )
+export function assignHouseModels(
+  placements,
+  models,
+  catalog = HOUSE_CATALOG,
+  random = createRandom(HOUSE_SEED),
+) {
+  const byId = new Map(models.map((model) => [model.id, model]))
+  const grouped = new Map()
 
-    parts.forEach((part, index) => {
-      const mesh = new THREE.InstancedMesh(
-        cellGeometry(part.geometry, featureIds),
-        materials[index],
-        cell.length,
-      )
-      matrices.forEach((matrix, slot) => mesh.setMatrixAt(slot, matrix))
-      mesh.instanceMatrix.needsUpdate = true
-      // Without this the cell keeps one house's bounds and is culled as soon as
-      // that house leaves the screen.
-      mesh.computeBoundingSphere()
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.name = part.name
-      group.add(mesh)
-    })
+  for (const placement of placements) {
+    const pick =
+      models.length === 1
+        ? models[0]
+        : byId.get(pickHouseModel(placement, catalog, random).id) ?? models[0]
+    let list = grouped.get(pick.id)
+    if (!list) {
+      list = []
+      grouped.set(pick.id, list)
+    }
+    list.push(placement)
   }
 
-  // Materials are shared across every cell, so one write lights up the whole
-  // city's copy of a building wherever its instances happen to sit.
+  return grouped
+}
+
+export function buildHouses(
+  modelOrModels,
+  placements,
+  cellSize = HOUSE_CELL_SIZE,
+) {
+  const models = asModelList(modelOrModels)
+  const group = new THREE.Group()
+  group.name = 'TPX_Houses'
+  const materials = []
   group.userData.materials = materials
+  const random = createRandom(HOUSE_SEED)
+  const assigned = assignHouseModels(placements, models, HOUSE_CATALOG, random)
+
+  for (const model of models) {
+    const plots = assigned.get(model.id)
+    if (!plots?.length) continue
+
+    const modelMaterials = model.parts.map((part) => houseMaterial(part.material))
+    materials.push(...modelMaterials)
+    const cellRandom = createRandom(HOUSE_SEED ^ hashId(model.id))
+
+    for (const cell of chunkPlacements(plots, cellSize)) {
+      const matrices = instanceMatrices(cell, model, cellRandom)
+      const featureIds = new THREE.InstancedBufferAttribute(
+        Float32Array.from(cell, (placement) => placement.slot),
+        1,
+      )
+
+      model.parts.forEach((part, index) => {
+        const mesh = new THREE.InstancedMesh(
+          cellGeometry(part.geometry, featureIds),
+          modelMaterials[index],
+          cell.length,
+        )
+        matrices.forEach((matrix, slot) => mesh.setMatrixAt(slot, matrix))
+        mesh.instanceMatrix.needsUpdate = true
+        // Without this the cell keeps one house's bounds and is culled as soon as
+        // that house leaves the screen.
+        mesh.computeBoundingSphere()
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        mesh.name = `${model.id}:${part.name}`
+        mesh.userData.modelId = model.id
+        group.add(mesh)
+      })
+    }
+  }
+
   return group
+}
+
+function hashId(id) {
+  let hash = 0
+  for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) | 0
+  return hash
 }
 
 export function setHouseHighlight(group, slot) {

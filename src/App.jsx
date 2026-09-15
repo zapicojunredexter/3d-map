@@ -443,7 +443,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aimedFeature, setAimedFeature] = useState(null)
   const [buildingStyle, setBuildingStyle] = useState(DEFAULT_BUILDING_STYLE)
-  const [hour, setHour] = useState(() => currentDecimalHour())
+  const [hour, setHour] = useState(() => 6)
   const hasEnteredRef = useRef(false)
   const poseRef = useRef({ x: 0, z: 0, heading: 0 })
   const placementRef = useRef(null)

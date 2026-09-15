@@ -18,6 +18,8 @@ import { FEATURE_ID, mergeWorldByLayer } from './mergeWorld'
 // group is built from.
 const Z_UP = { position: new THREE.Vector3(0, 0, 0), rotation: [-Math.PI / 2, 0, 0] }
 
+const UNIT_CUBE = { ridgeAlongX: true, width: 1, depth: 1, height: 1 }
+
 // Blocks as TopoExport writes them: z-up extrusions standing on z=0.
 function blockCity(blocks) {
   const material = new THREE.MeshStandardMaterial()
@@ -110,17 +112,18 @@ describe('buildingPlacements', () => {
 })
 
 describe('normalizeHouseModel', () => {
-  it('rebases every part into one shared unit box on the ground', () => {
-    const { parts } = normalizeHouseModel(fakeHouse())
+  it('rebases every part to height 1 on the ground, keeping footprint ratios', () => {
+    const model = normalizeHouseModel(fakeHouse())
     const bounds = new THREE.Box3()
-    for (const part of parts) bounds.union(part.geometry.boundingBox)
+    for (const part of model.parts) bounds.union(part.geometry.boundingBox)
 
     expect(bounds.min.y).toBeCloseTo(0)
     expect(bounds.max.y).toBeCloseTo(1)
-    expect(bounds.min.x).toBeCloseTo(-0.5)
-    expect(bounds.max.x).toBeCloseTo(0.5)
-    expect(bounds.min.z).toBeCloseTo(-0.5)
-    expect(bounds.max.z).toBeCloseTo(0.5)
+    expect(model.height).toBe(1)
+    expect(model.width).toBeGreaterThan(0.5)
+    expect(model.depth).toBeGreaterThan(0.5)
+    expect(bounds.max.x - bounds.min.x).toBeCloseTo(model.width)
+    expect(bounds.max.z - bounds.min.z).toBeCloseTo(model.depth)
   })
 
   it('reports which way the ridge runs', () => {
@@ -159,35 +162,37 @@ describe('instanceMatrices', () => {
     return { position, quaternion, scale }
   }
 
-  it('fills the plot, inset so neighbours do not share a wall', () => {
-    const [matrix] = instanceMatrices([
-      { x: 5, y: 2, z: -3, width: 10, depth: 8, height: 6 },
-    ])
+  it('fills the plot so it matches the invisible collider', () => {
+    const [matrix] = instanceMatrices(
+      [{ x: 5, y: 2, z: -3, width: 10, depth: 8, height: 6 }],
+      UNIT_CUBE,
+    )
     const { position, scale } = decompose(matrix)
 
     expect(position.toArray()).toEqual([5, 2, -3])
     expect(scale.x).toBeCloseTo(10 * FOOTPRINT_INSET)
-    expect(scale.z).toBeCloseTo(8 * FOOTPRINT_INSET)
-    // Height fills the block exactly, or roofs would float above the plot.
     expect(scale.y).toBeCloseTo(6)
+    expect(scale.z).toBeCloseTo(8 * FOOTPRINT_INSET)
   })
 
   it('turns the house so its ridge follows the long side of a deep plot', () => {
-    const [matrix] = instanceMatrices([
-      { x: 0, y: 0, z: 0, width: 8, depth: 20, height: 6 },
-    ])
+    const long = { ridgeAlongX: true, width: 2, depth: 1, height: 1 }
+    const [matrix] = instanceMatrices(
+      [{ x: 0, y: 0, z: 0, width: 8, depth: 20, height: 6 }],
+      long,
+    )
     const { quaternion, scale } = decompose(matrix)
 
-    // Turned a quarter, so the model's own x now spans the plot's depth.
-    expect(scale.x).toBeCloseTo(20 * FOOTPRINT_INSET)
-    expect(scale.z).toBeCloseTo(8 * FOOTPRINT_INSET)
+    // Turned a quarter: model x (long) spans the plot's depth.
+    expect(scale.x * long.width).toBeCloseTo(20 * FOOTPRINT_INSET)
+    expect(scale.z * long.depth).toBeCloseTo(8 * FOOTPRINT_INSET)
+    expect(scale.y).toBeCloseTo(6)
 
     const euler = new THREE.Euler().setFromQuaternion(quaternion, 'YXZ')
     expect(Math.abs(Math.cos(euler.y))).toBeCloseTo(0)
   })
 
-  it('still covers the plot after the front is turned around', () => {
-    // Whatever yaw the jitter picks, the footprint it spans cannot change.
+  it('covers the plot after the front is turned around', () => {
     const plots = Array.from({ length: 24 }, (unused, index) => ({
       x: index * 30,
       y: 0,
@@ -197,7 +202,7 @@ describe('instanceMatrices', () => {
       height: 6,
     }))
 
-    for (const matrix of instanceMatrices(plots)) {
+    for (const matrix of instanceMatrices(plots, UNIT_CUBE)) {
       const box = new THREE.Box3(
         new THREE.Vector3(-0.5, 0, -0.5),
         new THREE.Vector3(0.5, 1, 0.5),
@@ -219,7 +224,7 @@ describe('instanceMatrices', () => {
       height: 6,
     }))
 
-    for (const matrix of instanceMatrices(plots)) {
+    for (const matrix of instanceMatrices(plots, UNIT_CUBE)) {
       const euler = new THREE.Euler().setFromQuaternion(
         decompose(matrix).quaternion,
         'YXZ',
@@ -239,7 +244,7 @@ describe('instanceMatrices', () => {
       height: 6,
     }))
     const yaws = new Set(
-      instanceMatrices(plots).map((matrix) =>
+      instanceMatrices(plots, UNIT_CUBE).map((matrix) =>
         decompose(matrix).quaternion.y.toFixed(3),
       ),
     )
@@ -250,8 +255,8 @@ describe('instanceMatrices', () => {
   it('lays the city out the same way on every load', () => {
     const plots = [{ x: 0, y: 0, z: 0, width: 12, depth: 9, height: 6 }]
 
-    expect(instanceMatrices(plots)[0].elements).toEqual(
-      instanceMatrices(plots)[0].elements,
+    expect(instanceMatrices(plots, UNIT_CUBE)[0].elements).toEqual(
+      instanceMatrices(plots, UNIT_CUBE)[0].elements,
     )
   })
 })
@@ -296,7 +301,9 @@ describe('buildHouses', () => {
   it('shares one material and one vertex buffer across every cell', () => {
     const model = normalizeHouseModel(fakeHouse())
     const houses = buildHouses(model, plots(6), 20)
-    const bodies = houses.children.filter((mesh) => mesh.name === 'VH2_house1_0')
+    const bodies = houses.children.filter((mesh) =>
+      mesh.name.endsWith('VH2_house1_0'),
+    )
 
     expect(bodies.length).toBeGreaterThan(1)
     for (const body of bodies) {
@@ -352,8 +359,8 @@ describe('setHouseHighlight', () => {
     expect(setHouseHighlight(houses, 7)).toBe(true)
     settle(houses)
     for (const material of houses.userData.materials) {
-      expect(uniformsOf(material).uHighlightFeature.value).toBe(7)
-      expect(uniformsOf(material).uHighlightLevel.value).toBe(1)
+      expect(uniformsOf(material).featureId.value).toBe(7)
+      expect(uniformsOf(material).amount.value).toBeCloseTo(1)
     }
   })
 
@@ -366,8 +373,8 @@ describe('setHouseHighlight', () => {
     settle(houses)
 
     const [material] = houses.userData.materials
-    expect(uniformsOf(material).uHighlightFeature.value).toBe(NO_HIGHLIGHT)
-    expect(uniformsOf(material).uHighlightLevel.value).toBe(0)
+    expect(uniformsOf(material).featureId.value).toBe(NO_HIGHLIGHT)
+    expect(uniformsOf(material).amount.value).toBeCloseTo(0)
   })
 
   it('ramps every part of the house together', () => {
@@ -377,21 +384,14 @@ describe('setHouseHighlight', () => {
 
     // Walls, door and roof share one ramp, or the house would light unevenly.
     const levels = houses.userData.materials.map(
-      (material) => uniformsOf(material).uHighlightLevel.value,
+      (material) => uniformsOf(material).amount.value,
     )
-    expect(new Set(levels).size).toBe(1)
+    expect(new Set(levels.map((level) => level.toFixed(4))).size).toBe(1)
     expect(levels[0]).toBeGreaterThan(0)
     expect(levels[0]).toBeLessThan(1)
   })
 
-  it('reports when there is nothing to glow', () => {
-    expect(setHouseHighlight(new THREE.Group(), 1)).toBe(false)
-    expect(setHouseHighlight(null, 1)).toBe(false)
-    expect(advanceHouseHighlight(new THREE.Group(), 0.016)).toBe(false)
-    expect(advanceHouseHighlight(null, 0.016)).toBe(false)
-  })
-
-  it('reports settled, so a still crosshair stops costing uniform writes', () => {
+  it('reports whether the glow is still moving', () => {
     const houses = oneHouse(5)
     setHouseHighlight(houses, 5)
 

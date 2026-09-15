@@ -11,8 +11,10 @@ import {
   chunkPlacements,
   instanceMatrices,
   normalizeTreeModel,
+  orderStopMotionFrames,
   placementMatrix,
   prepareAnimatedTree,
+  punchBlackAlpha,
   treeMaterial,
   treePlacements,
 } from './treeInstances'
@@ -211,10 +213,45 @@ describe('treeMaterial', () => {
     expect(material.alphaTest).toBe(0)
     expect(material.transparent).toBe(false)
   })
+
+  it('punches pure-black atlas pixels to alpha for cut-out foliage', () => {
+    const data = new Uint8Array([
+      0, 0, 0, 255, 20, 120, 40, 255, 0, 0, 0, 255, 10, 80, 20, 255,
+    ])
+    const map = new THREE.DataTexture(data, 2, 2)
+    map.format = THREE.RGBAFormat
+    map.needsUpdate = true
+    const source = new THREE.MeshStandardMaterial({
+      map,
+      emissiveMap: map,
+      emissive: new THREE.Color(1, 1, 1),
+    })
+
+    const material = treeMaterial(source)
+
+    expect(material.map).not.toBe(map)
+    expect(material.emissiveMap).toBe(material.map)
+    expect(Array.from(material.map.image.data)).toEqual([
+      0, 0, 0, 0, 20, 120, 40, 255, 0, 0, 0, 0, 10, 80, 20, 255,
+    ])
+    expect(material.alphaTest).toBe(0.5)
+    expect(material.transparent).toBe(false)
+    expect(data[3]).toBe(255)
+  })
+})
+
+describe('punchBlackAlpha', () => {
+  it('returns the same texture when nothing is black', () => {
+    const data = new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255])
+    const map = new THREE.DataTexture(data, 2, 1)
+    map.format = THREE.RGBAFormat
+    expect(punchBlackAlpha(map)).toBe(map)
+  })
 })
 
 describe('buildTrees', () => {
   const model = {
+    id: 'test',
     parts: [
       {
         name: 'bark',
@@ -259,7 +296,7 @@ describe('buildTrees', () => {
     }))
     const group = buildTrees(model, placements, 100)
     const firsts = group.children
-      .filter((mesh) => mesh.name === 'bark')
+      .filter((mesh) => mesh.name.endsWith('bark'))
       .map((mesh) => {
         const matrix = new THREE.Matrix4()
         mesh.getMatrixAt(0, matrix)
@@ -279,11 +316,39 @@ describe('buildTrees', () => {
       radius: 3,
     }))
     const group = buildTrees(model, placements, 100)
-    const leaves = group.children.filter((mesh) => mesh.name === 'leaves')
+    const leaves = group.children.filter((mesh) => mesh.name.endsWith('leaves'))
 
     expect(leaves).toHaveLength(6)
     expect(new Set(leaves.map((mesh) => mesh.material)).size).toBe(1)
     expect(leaves[0].material.alphaTest).toBe(0.5)
+  })
+
+  it('scatters placements across multiple models', () => {
+    const models = [
+      { ...model, id: 'a' },
+      {
+        id: 'b',
+        parts: [
+          {
+            name: 'trunk',
+            geometry: new THREE.BoxGeometry(1, 1, 1),
+            material: new THREE.MeshStandardMaterial(),
+          },
+        ],
+      },
+    ]
+    const placements = Array.from({ length: 40 }, (_, index) => ({
+      x: index * 10,
+      y: 0,
+      z: 0,
+      height: 8,
+      radius: 3,
+    }))
+    const group = buildTrees(models, placements, 1000)
+    const ids = new Set(group.children.map((mesh) => mesh.userData.modelId))
+
+    expect(ids.has('a')).toBe(true)
+    expect(ids.has('b')).toBe(true)
   })
 })
 
@@ -391,5 +456,98 @@ describe('buildAnimatedTrees', () => {
 
     expect(near.mixer.time).toBeGreaterThan(nearTime)
     expect(far.mixer.time).toBe(farTime)
+  })
+})
+
+function stopMotionScene() {
+  const scene = new THREE.Group()
+  const timeframe = new THREE.Group()
+  // Match the name GLTFLoader emits after stripping punctuation.
+  timeframe.name = 'sketchfabtimeframe'
+
+  for (const [name, scale] of [
+    ['Object_2', 1e-10],
+    ['Object_7', 1e-10],
+    ['Object_12', 1e-10],
+    ['Object_17', 1],
+  ]) {
+    const frame = new THREE.Group()
+    frame.name = name
+    frame.scale.setScalar(scale)
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 10, 2),
+      new THREE.MeshStandardMaterial(),
+    )
+    mesh.position.y = 5
+    frame.add(mesh)
+    timeframe.add(frame)
+  }
+
+  scene.add(timeframe)
+  return scene
+}
+
+function stopMotionClip() {
+  return new THREE.AnimationClip('Object_0', 1, [
+    new THREE.VectorKeyframeTrack(
+      'Object_17.scale',
+      [0, 0.25],
+      [1, 1, 1, 1, 1, 1],
+    ),
+    new THREE.VectorKeyframeTrack(
+      'Object_12.scale',
+      [0, 0.25, 0.5],
+      [1e-10, 1e-10, 1e-10, 1e-10, 1e-10, 1e-10, 1, 1, 1],
+    ),
+    new THREE.VectorKeyframeTrack(
+      'Object_7.scale',
+      [0, 0.5, 0.75],
+      [1e-10, 1e-10, 1e-10, 1e-10, 1e-10, 1e-10, 1, 1, 1],
+    ),
+    new THREE.VectorKeyframeTrack(
+      'Object_2.scale',
+      [0, 0.75, 1],
+      [1e-10, 1e-10, 1e-10, 1e-10, 1e-10, 1e-10, 1, 1, 1],
+    ),
+  ])
+}
+
+describe('stop-motion trees', () => {
+  it('orders Sketchfab frames by when they appear, not node order', () => {
+    const root = stopMotionScene()
+    const frames = orderStopMotionFrames(root, stopMotionClip())
+    expect(frames.map((frame) => frame.name)).toEqual([
+      'Object_17',
+      'Object_12',
+      'Object_7',
+      'Object_2',
+    ])
+  })
+
+  it('snaps visibility between poses instead of scaling them', () => {
+    const model = prepareAnimatedTree(stopMotionScene(), [stopMotionClip()])
+    expect(model.stopMotion).toBe(true)
+    expect(model.frameDuration).toBeCloseTo(0.25)
+
+    const group = buildAnimatedTrees(model, [stopMotionClip()], [
+      { x: 0, y: 0, z: 0, height: 8, radius: 3 },
+    ])
+    const [entry] = group.userData.mixers
+    expect(entry.stopMotion).toBe(true)
+    entry.time = 0
+    entry.timeScale = 1
+    entry.frameIndex = 0
+    entry.frames.forEach((frame, index) => {
+      frame.visible = index === 0
+    })
+
+    advanceTreeAnimations(group, 0.26, new THREE.Vector3(0, 0, 0))
+    expect(entry.frames.map((frame) => frame.visible)).toEqual([
+      false,
+      true,
+      false,
+      false,
+    ])
+    expect(entry.frames.every((frame) => frame.scale.x === 1)).toBe(true)
   })
 })

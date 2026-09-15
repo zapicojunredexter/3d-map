@@ -33,8 +33,8 @@ const load = (path) =>
   })
 
 const CITY = 'assets/topoexport_3D_modeling.glb'
-// Vite hands the component a served url; the file itself sits alongside the city.
-const HOUSE = `assets/${HOUSE_MODEL_URL.split('/').pop().split('?')[0]}`
+// Vite hands the component a served url; the file itself sits under assets/houses.
+const HOUSE = `assets/houses/${HOUSE_MODEL_URL.split('/').pop().split('?')[0]}`
 
 describe('houses on the real survey', () => {
   let blocks
@@ -85,8 +85,8 @@ describe('houses on the real survey', () => {
   })
 
   it('puts exactly one house on each plot', () => {
-    const bodies = houses.children.filter(
-      (mesh) => mesh.name === model.parts[0].name,
+    const bodies = houses.children.filter((mesh) =>
+      mesh.name.includes(model.parts[0].name),
     )
     const instances = bodies.reduce((total, mesh) => total + mesh.count, 0)
 

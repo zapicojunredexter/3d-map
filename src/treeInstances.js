@@ -63,10 +63,10 @@ export function treePlacements(scene, placement) {
   return placements
 }
 
-// The source tree is off-centre, dips below its own origin and stands 33 units
-// tall. Rebasing it to one unit tall on y=0 lets an instance matrix carry
-// nothing but position, yaw and the height it has to match.
-export function normalizeTreeModel(scene) {
+// The source tree is often off-centre and may be authored Z-up (Sketchfab FBX).
+// Rebase to one unit tall on y=0 so an instance matrix only carries position,
+// yaw and the survey height it has to match.
+export function normalizeTreeModel(scene, catalogEntry = null) {
   scene.updateMatrixWorld(true)
   const bounds = new THREE.Box3()
   const parts = []
@@ -81,8 +81,23 @@ export function normalizeTreeModel(scene) {
 
   if (parts.length === 0) throw new Error('Tree model has no meshes')
 
-  const size = bounds.getSize(new THREE.Vector3())
+  let size = bounds.getSize(new THREE.Vector3())
+  // FBX-via-Sketchfab trees often keep height on Z. Stand them up before
+  // measuring so planting scale matches the survey trunks.
+  if (size.z > size.y && size.z >= size.x) {
+    const stand = new THREE.Matrix4().makeRotationX(-Math.PI / 2)
+    bounds.makeEmpty()
+    for (const part of parts) {
+      part.geometry.applyMatrix4(stand)
+      part.geometry.computeBoundingBox()
+      bounds.union(part.geometry.boundingBox)
+    }
+    size = bounds.getSize(new THREE.Vector3())
+  }
+
   const center = bounds.getCenter(new THREE.Vector3())
+  if (size.y <= 0) throw new Error('Tree model has no height')
+
   const rebase = new THREE.Matrix4()
     .makeScale(1 / size.y, 1 / size.y, 1 / size.y)
     .multiply(
@@ -95,7 +110,11 @@ export function normalizeTreeModel(scene) {
     part.geometry.computeBoundingSphere()
   }
 
-  return { parts, spread: Math.max(size.x, size.z) / size.y }
+  return {
+    id: catalogEntry?.id ?? parts[0]?.name ?? 'tree',
+    parts,
+    spread: Math.max(size.x, size.z) / size.y,
+  }
 }
 
 export function chunkPlacements(placements, cellSize = TREE_CELL_SIZE) {
@@ -134,47 +153,157 @@ export function instanceMatrices(placements, random = createRandom(TREE_SEED)) {
 // Leaf atlases are cut-outs, and blending thousands of instanced cards has no
 // correct draw order anyway, so the alpha is tested rather than blended. That
 // also restores depth writes, which the shadow pass needs.
+//
+// Pixel-art trees (e.g. Sketchfab stop-motion pines) often ship an RGB atlas
+// with a pure-black backdrop instead of an alpha channel. Chroma-key that to
+// alpha=0 so alphaTest can discard it.
+export function punchBlackAlpha(texture, threshold = 0) {
+  const image = texture?.image
+  if (!image) return texture
+
+  const width = image.width
+  const height = image.height
+  if (!width || !height) return texture
+
+  let data
+  if (image.data) {
+    data = image.data.slice ? image.data.slice() : Uint8ClampedArray.from(image.data)
+  } else if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return texture
+    ctx.drawImage(image, 0, 0)
+    const imgData = ctx.getImageData(0, 0, width, height)
+    data = imgData.data
+    let punched = 0
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] + data[i + 1] + data[i + 2] <= threshold) {
+        data[i + 3] = 0
+        punched += 1
+      }
+    }
+    if (punched === 0) return texture
+    ctx.putImageData(imgData, 0, 0)
+    const next = texture.clone()
+    next.image = canvas
+    next.needsUpdate = true
+    return next
+  } else {
+    return texture
+  }
+
+  let punched = 0
+  const channels = data.length / (width * height)
+  if (channels < 4) return texture
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] + data[i + 1] + data[i + 2] <= threshold) {
+      data[i + 3] = 0
+      punched += 1
+    }
+  }
+  if (punched === 0) return texture
+
+  const next = texture.clone()
+  next.image = { data, width, height }
+  next.format = THREE.RGBAFormat
+  next.needsUpdate = true
+  return next
+}
+
+function cutoutMaps(material, source) {
+  const map = material.map
+  if (!map) return false
+
+  const punched = punchBlackAlpha(map)
+  if (punched === map) return false
+
+  material.map = punched
+  if (
+    material.emissiveMap === map ||
+    (source.emissiveMap && material.emissiveMap === source.emissiveMap)
+  ) {
+    material.emissiveMap = punched
+  }
+  return true
+}
+
 export function treeMaterial(source) {
   const material = source.clone()
   material.envMapIntensity = 0.65
 
-  if (material.transparent) {
+  const punched = cutoutMaps(material, source)
+  if (punched || material.transparent) {
     material.transparent = false
-    material.alphaTest = 0.5
+    material.alphaTest = Math.max(material.alphaTest || 0, 0.5)
     material.depthWrite = true
   }
 
   return material
 }
 
-export function buildTrees({ parts }, placements, cellSize = TREE_CELL_SIZE) {
+export function buildTrees(modelOrModels, placements, cellSize = TREE_CELL_SIZE) {
+  const models = Array.isArray(modelOrModels) ? modelOrModels : [modelOrModels]
   const group = new THREE.Group()
   group.name = 'TPX_Trees'
-  const materials = parts.map((part) => treeMaterial(part.material))
   const random = createRandom(TREE_SEED)
+  const assigned = assignTreeModels(placements, models, random)
 
-  for (const cell of chunkPlacements(placements, cellSize)) {
-    const matrices = instanceMatrices(cell, random)
+  for (const model of models) {
+    const plots = assigned.get(model.id)
+    if (!plots?.length) continue
 
-    parts.forEach((part, index) => {
-      const mesh = new THREE.InstancedMesh(
-        part.geometry,
-        materials[index],
-        cell.length,
-      )
-      matrices.forEach((matrix, slot) => mesh.setMatrixAt(slot, matrix))
-      mesh.instanceMatrix.needsUpdate = true
-      // Without this the cell keeps the single tree's bounds and is culled the
-      // moment the origin leaves the screen.
-      mesh.computeBoundingSphere()
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.name = part.name
-      group.add(mesh)
-    })
+    const materials = model.parts.map((part) => treeMaterial(part.material))
+    const cellRandom = createRandom(TREE_SEED ^ hashId(model.id))
+
+    for (const cell of chunkPlacements(plots, cellSize)) {
+      const matrices = instanceMatrices(cell, cellRandom)
+
+      model.parts.forEach((part, index) => {
+        const mesh = new THREE.InstancedMesh(
+          part.geometry,
+          materials[index],
+          cell.length,
+        )
+        matrices.forEach((matrix, slot) => mesh.setMatrixAt(slot, matrix))
+        mesh.instanceMatrix.needsUpdate = true
+        // Without this the cell keeps the single tree's bounds and is culled the
+        // moment the origin leaves the screen.
+        mesh.computeBoundingSphere()
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        mesh.name = `${model.id}:${part.name}`
+        mesh.userData.modelId = model.id
+        group.add(mesh)
+      })
+    }
   }
 
   return group
+}
+
+export function assignTreeModels(placements, models, random = createRandom(TREE_SEED)) {
+  const grouped = new Map()
+  if (!models.length) return grouped
+
+  for (const placement of placements) {
+    const model = models[Math.floor(random() * models.length)]
+    let list = grouped.get(model.id)
+    if (!list) {
+      list = []
+      grouped.set(model.id, list)
+    }
+    list.push(placement)
+  }
+
+  return grouped
+}
+
+function hashId(id) {
+  let hash = 0
+  for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) | 0
+  return hash
 }
 
 // Animated glTF trees keep their skeleton. The source is wrapped so the root
@@ -192,27 +321,69 @@ function objectBounds(root) {
   return bounds
 }
 
-export function prepareAnimatedTree(scene) {
-  const root = cloneSkeleton(scene)
-  root.updateMatrixWorld(true)
+function findTimeframeRoot(root) {
+  let found = null
+  root.traverse((object) => {
+    if (found) return
+    const name = object.name ?? ''
+    // GLTFLoader strips punctuation from node names, so "sketchfab.timeframe"
+    // arrives as "sketchfabtimeframe".
+    if (/^sketchfab[._]?timeframe$/i.test(name)) found = object
+  })
+  return found
+}
 
-  const bounds = objectBounds(root)
-  if (bounds.isEmpty()) throw new Error('Tree model has no meshes')
+function scaleTrackForNode(clip, nodeName) {
+  if (!clip) return null
+  return (
+    clip.tracks.find(
+      (track) =>
+        track.name === `${nodeName}.scale` ||
+        track.name.endsWith(`/${nodeName}.scale`),
+    ) ?? null
+  )
+}
 
-  const size = bounds.getSize(new THREE.Vector3())
-  const center = bounds.getCenter(new THREE.Vector3())
-  if (size.y <= 0) throw new Error('Tree model has no height')
+function firstVisibleTime(track, fallback) {
+  if (!track) return fallback
+  const { times, values } = track
+  for (let i = 0; i < times.length; i += 1) {
+    if (values[i * 3] > 0.5) return times[i]
+  }
+  return fallback
+}
 
-  root.position.set(-center.x, -bounds.min.y, -center.z)
-  root.scale.setScalar(1 / size.y)
-  root.updateMatrixWorld(true)
+// Sketchfab stop-motion exports one mesh per pose and "shows" them by scaling
+// from ~0 to 1 with LINEAR interpolation. Three plays that as a grow/shrink.
+// Sketchfab itself steps frames, so we rebuild the cycle as visibility snaps.
+export function orderStopMotionFrames(root, clip) {
+  const timeframe = findTimeframeRoot(root)
+  if (!timeframe?.children?.length) return null
 
+  const scored = timeframe.children.map((child, index) => ({
+    child,
+    appear: firstVisibleTime(
+      scaleTrackForNode(clip, child.name),
+      child.scale.x > 0.5 ? 0 : 1000 + index,
+    ),
+  }))
+  scored.sort((a, b) => a.appear - b.appear || a.child.id - b.child.id)
+  return scored.map((entry) => entry.child)
+}
+
+export function stopMotionFrameDuration(clip, frameCount) {
+  if (frameCount <= 0) return 0.25
+  if (clip?.duration > 0) return clip.duration / frameCount
+  return 0.25
+}
+
+function applyTreeMaterials(root) {
   const materials = new Map()
   root.traverse((object) => {
     if (!object.isMesh) return
     object.castShadow = true
     object.receiveShadow = true
-    // Gentle sway can push verts outside the bind-pose sphere.
+    // Gentle sway / frame swaps can push verts outside the bind-pose sphere.
     object.frustumCulled = false
 
     const sources = Array.isArray(object.material)
@@ -229,6 +400,41 @@ export function prepareAnimatedTree(scene) {
     })
     object.material = Array.isArray(object.material) ? replaced : replaced[0]
   })
+}
+
+export function prepareAnimatedTree(scene, clips = []) {
+  const root = cloneSkeleton(scene)
+  const clip = clips[0]
+  const frames = orderStopMotionFrames(root, clip)
+
+  if (frames) {
+    // Measure every pose at full size; the export leaves later frames scaled away.
+    for (const frame of frames) {
+      frame.scale.set(1, 1, 1)
+      frame.visible = true
+    }
+  }
+
+  root.updateMatrixWorld(true)
+
+  const bounds = objectBounds(root)
+  if (bounds.isEmpty()) throw new Error('Tree model has no meshes')
+
+  const size = bounds.getSize(new THREE.Vector3())
+  const center = bounds.getCenter(new THREE.Vector3())
+  if (size.y <= 0) throw new Error('Tree model has no height')
+
+  root.position.set(-center.x, -bounds.min.y, -center.z)
+  root.scale.setScalar(1 / size.y)
+  root.updateMatrixWorld(true)
+
+  applyTreeMaterials(root)
+
+  if (frames) {
+    frames.forEach((frame, index) => {
+      frame.visible = index === 0
+    })
+  }
 
   const template = new THREE.Group()
   template.name = 'TreeTemplate'
@@ -237,45 +443,79 @@ export function prepareAnimatedTree(scene) {
   return {
     template,
     spread: Math.max(size.x, size.z) / size.y,
+    stopMotion: Boolean(frames),
+    frameNames: frames?.map((frame) => frame.name) ?? null,
+    frameDuration: stopMotionFrameDuration(clip, frames?.length ?? 0),
   }
 }
 
+function plantTreeTransform(tree, placement, random) {
+  const width = placement.height * CANOPY_SQUEEZE * (0.92 + random() * 0.16)
+  tree.position.set(placement.x, placement.y, placement.z)
+  tree.rotation.y = random() * Math.PI * 2
+  tree.scale.set(width, placement.height, width)
+}
+
 export function buildAnimatedTrees(
-  { template },
+  model,
   clips,
   placements,
   cellSize = TREE_CELL_SIZE,
 ) {
+  const { template } = model
   const group = new THREE.Group()
   group.name = 'TPX_Trees'
   const mixers = []
   group.userData.mixers = mixers
 
   const clip = clips[0]
-  if (!clip) return group
-
   const random = createRandom(TREE_SEED)
 
   for (const cell of chunkPlacements(placements, cellSize)) {
     for (const placement of cell) {
       const tree = cloneSkeleton(template)
-      const width = placement.height * CANOPY_SQUEEZE * (0.92 + random() * 0.16)
-      tree.position.set(placement.x, placement.y, placement.z)
-      tree.rotation.y = random() * Math.PI * 2
-      tree.scale.set(width, placement.height, width)
+      plantTreeTransform(tree, placement, random)
 
-      const mixer = new THREE.AnimationMixer(tree)
-      const action = mixer.clipAction(clip)
-      action.play()
-      action.time = random() * clip.duration
-      action.timeScale = 0.85 + random() * 0.3
-      mixer.update(0)
+      if (model.stopMotion && model.frameNames?.length) {
+        const frames = model.frameNames.map((name) => {
+          const frame = tree.getObjectByName(name)
+          if (!frame) throw new Error(`Missing stop-motion frame ${name}`)
+          return frame
+        })
+        const timeScale = 0.85 + random() * 0.3
+        const time = random() * model.frameDuration * frames.length
+        const frameIndex =
+          Math.floor(time / model.frameDuration) % frames.length
+        frames.forEach((frame, index) => {
+          frame.visible = index === frameIndex
+          frame.scale.set(1, 1, 1)
+        })
+        mixers.push({
+          stopMotion: true,
+          frames,
+          frameDuration: model.frameDuration,
+          frameIndex,
+          time,
+          timeScale,
+          x: placement.x,
+          z: placement.z,
+        })
+      } else {
+        if (!clip) continue
+        const mixer = new THREE.AnimationMixer(tree)
+        const action = mixer.clipAction(clip)
+        action.play()
+        action.time = random() * clip.duration
+        action.timeScale = 0.85 + random() * 0.3
+        mixer.update(0)
 
-      mixers.push({
-        mixer,
-        x: placement.x,
-        z: placement.z,
-      })
+        mixers.push({
+          mixer,
+          x: placement.x,
+          z: placement.z,
+        })
+      }
+
       group.add(tree)
     }
   }
@@ -300,6 +540,19 @@ export function advanceTreeAnimations(
     const dx = entry.x - cx
     const dz = entry.z - cz
     if (dx * dx + dz * dz > radiusSq) continue
+
+    if (entry.stopMotion) {
+      entry.time += delta * entry.timeScale
+      const count = entry.frames.length
+      const next =
+        Math.floor(entry.time / entry.frameDuration) % count
+      if (next === entry.frameIndex) continue
+      entry.frames[entry.frameIndex].visible = false
+      entry.frames[next].visible = true
+      entry.frameIndex = next
+      continue
+    }
+
     entry.mixer.update(delta)
   }
 }

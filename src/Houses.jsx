@@ -7,19 +7,25 @@ import {
   normalizeHouseModel,
   setHouseHighlight,
 } from './houseInstances'
-// import houseUrl from '../assets/house.glb?url'
-import houseUrl from '../assets/simple_medieval_style_house.glb?url'
+import { HOUSE_CATALOG, HOUSE_MODEL_URLS } from './houseCatalog'
 
-export const HOUSE_MODEL_URL = houseUrl
+export { HOUSE_CATALOG, HOUSE_MODEL_URLS }
+export const HOUSE_MODEL_URL = HOUSE_MODEL_URLS[0]
 
 // Outside the city's <Bvh>, like the trees: the blocks underneath are still the
 // raycast target, so nothing needs a bounds tree over the instances.
 export default function Houses({ placements, highlight }) {
-  const { scene } = useGLTF(HOUSE_MODEL_URL)
-  const model = useMemo(() => normalizeHouseModel(scene), [scene])
+  const gltfs = useGLTF(HOUSE_MODEL_URLS)
+  const models = useMemo(
+    () =>
+      HOUSE_CATALOG.map((entry, index) =>
+        normalizeHouseModel(gltfs[index].scene, entry),
+      ),
+    [gltfs],
+  )
   const houses = useMemo(
-    () => buildHouses(model, placements),
-    [model, placements],
+    () => buildHouses(models, placements),
+    [models, placements],
   )
 
   useEffect(() => {
@@ -30,3 +36,5 @@ export default function Houses({ placements, highlight }) {
 
   return <primitive object={houses} />
 }
+
+for (const url of HOUSE_MODEL_URLS) useGLTF.preload(url)
