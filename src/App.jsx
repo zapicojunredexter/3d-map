@@ -37,7 +37,9 @@ import {
 } from './buildingStyles'
 import Trees from './Trees'
 import Houses from './Houses'
+import Animals from './Animals'
 import { buildingPlacements } from './houseInstances'
+import { animalPlacements } from './animalInstances'
 import { headingFromForward } from './minimapMath'
 import { currentDecimalHour } from './timeOfDay'
 import Minimap from './Minimap'
@@ -128,6 +130,7 @@ function WorldModel({
       solids: solidMeshes(merged),
       trees: treePlacements(scene, placement),
       buildings: buildingPlacements(blocks, placement),
+      animals: animalPlacements(merged, placement),
       placement,
     }
   }, [gl, scene])
@@ -164,6 +167,9 @@ function WorldModel({
         </group>
       </Bvh>
       <Trees placements={model.trees} />
+      <Suspense fallback={null}>
+        <Animals placements={model.animals} />
+      </Suspense>
       {/* Its own boundary, so switching looks never drops the city back to the
           loading screen while the house model arrives. */}
       {buildingStyle === HOUSES_STYLE && (
