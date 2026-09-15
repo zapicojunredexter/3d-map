@@ -3,11 +3,16 @@ import * as THREE from 'three'
 import {
   BUILDINGS_LAYER,
   BUILDING_STYLES,
+  DEFAULT_BUILDING_STYLE,
   GROUND_LAYER,
+  HOUSES_STYLE,
   ROAD_LAYER,
+  advanceBuildingHighlight,
   applyBuildingStyle,
   findBuildingStyle,
+  setBuildingHighlight,
 } from './buildingStyles'
+import { HIGHLIGHT_FADE_SECONDS, NO_HIGHLIGHT } from './featureHighlight'
 import { FEATURE_ID, mergeWorldByLayer } from './mergeWorld'
 
 // A city of four tagged blocks plus textured ground and road, matching what
@@ -41,10 +46,16 @@ const layer = (group, name) =>
   group.children.find((child) => child.isMesh && child.name === name)
 
 describe('findBuildingStyle', () => {
-  it('falls back to the survey look for an unknown id', () => {
+  it('falls back to the default look for an unknown id', () => {
     expect(findBuildingStyle('hologram').id).toBe('hologram')
-    expect(findBuildingStyle('nonsense').id).toBe('plain')
-    expect(findBuildingStyle(undefined).id).toBe('plain')
+    expect(findBuildingStyle('nonsense').id).toBe(DEFAULT_BUILDING_STYLE)
+    expect(findBuildingStyle(undefined).id).toBe(DEFAULT_BUILDING_STYLE)
+  })
+
+  it('has a default that is one of the offered looks', () => {
+    expect(BUILDING_STYLES.map((style) => style.id)).toContain(
+      DEFAULT_BUILDING_STYLE,
+    )
   })
 })
 
@@ -164,5 +175,96 @@ describe('applyBuildingStyle', () => {
   it('does nothing when the city has no buildings layer', () => {
     const empty = new THREE.Group()
     expect(() => applyBuildingStyle(empty, 'clay')).not.toThrow()
+  })
+
+  it('hides the blocks for the houses look but keeps them in the scene', () => {
+    const city = fakeCity()
+    applyBuildingStyle(city, HOUSES_STYLE)
+    const buildings = layer(city, BUILDINGS_LAYER)
+
+    // Still a child, and still raycastable: collision and the crosshair's name
+    // both come off this mesh while the instanced houses do the drawing.
+    expect(buildings).toBeTruthy()
+    expect(buildings.visible).toBe(false)
+  })
+
+  it('brings the blocks back when another look is chosen', () => {
+    const city = fakeCity()
+    applyBuildingStyle(city, HOUSES_STYLE)
+    applyBuildingStyle(city, 'clay')
+
+    expect(layer(city, BUILDINGS_LAYER).visible).toBe(true)
+  })
+
+  it('leaves the blocks visible in every material-only look', () => {
+    const city = fakeCity()
+
+    for (const style of BUILDING_STYLES.filter((each) => !each.hidden)) {
+      applyBuildingStyle(city, style.id)
+      expect(layer(city, BUILDINGS_LAYER).visible).toBe(true)
+    }
+  })
+})
+
+describe('setBuildingHighlight', () => {
+  // The glow ramps, so the uniform only catches up once frames have run.
+  const settle = (city) => {
+    for (let frame = 0; frame < 60; frame += 1) {
+      advanceBuildingHighlight(city, HIGHLIGHT_FADE_SECONDS / 8)
+    }
+  }
+
+  const uniforms = (city) =>
+    layer(city, BUILDINGS_LAYER).material.userData.highlight.uniforms
+
+  it('lets every look glow, in its own colour', () => {
+    const city = fakeCity()
+
+    for (const style of BUILDING_STYLES) {
+      applyBuildingStyle(city, style.id)
+      expect(setBuildingHighlight(city, 2)).toBe(true)
+      settle(city)
+
+      expect(uniforms(city).uHighlightFeature.value).toBe(2)
+      expect(uniforms(city).uHighlightLevel.value).toBe(1)
+      expect(uniforms(city).uHighlightColor.value.getHex()).toBe(
+        new THREE.Color(style.highlight.color).getHex(),
+      )
+    }
+  })
+
+  it('still glows after a style switch replaces the material', () => {
+    const city = fakeCity()
+    applyBuildingStyle(city, 'plain')
+    setBuildingHighlight(city, 1)
+    settle(city)
+
+    // The new material starts dark, which is why App re-pushes the pick.
+    applyBuildingStyle(city, 'clay')
+    expect(uniforms(city).uHighlightFeature.value).toBe(NO_HIGHLIGHT)
+    expect(uniforms(city).uHighlightLevel.value).toBe(0)
+
+    expect(setBuildingHighlight(city, 1)).toBe(true)
+    settle(city)
+    expect(uniforms(city).uHighlightFeature.value).toBe(1)
+    expect(uniforms(city).uHighlightLevel.value).toBe(1)
+  })
+
+  it('fades in rather than appearing at full glow', () => {
+    const city = fakeCity()
+    applyBuildingStyle(city, 'clay')
+    setBuildingHighlight(city, 3)
+
+    expect(uniforms(city).uHighlightLevel.value).toBe(0)
+    advanceBuildingHighlight(city, HIGHLIGHT_FADE_SECONDS / 4)
+    const part = uniforms(city).uHighlightLevel.value
+    expect(part).toBeGreaterThan(0)
+    expect(part).toBeLessThan(1)
+  })
+
+  it('does nothing when the city has no buildings layer', () => {
+    expect(setBuildingHighlight(new THREE.Group(), 1)).toBe(false)
+    expect(setBuildingHighlight(null, 1)).toBe(false)
+    expect(advanceBuildingHighlight(new THREE.Group(), 0.016)).toBe(false)
   })
 })

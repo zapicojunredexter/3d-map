@@ -51,14 +51,22 @@ function tagFeature(geometry, slot) {
   return geometry
 }
 
-// The name of the feature a raycast hit, or null when that surface carries no
-// identity. The tag is per-vertex, so the hit triangle answers for it.
-export function featureAt(intersection) {
+// The feature a raycast hit, or null when that surface carries no identity.
+// The tag is per-vertex, so the hit triangle answers for it. The slot comes
+// back alongside the name because shaders can only compare the number.
+export function pickFeature(intersection) {
   const names = intersection?.object?.userData?.featureNames
   const slots = intersection?.object?.geometry?.getAttribute?.(FEATURE_ID)
   const vertex = intersection?.face?.a
   if (!names || !slots || vertex == null) return null
-  return names[slots.getX(vertex)] ?? null
+
+  const slot = slots.getX(vertex)
+  const name = names[slot]
+  return name == null ? null : { slot, name }
+}
+
+export function featureAt(intersection) {
+  return pickFeature(intersection)?.name ?? null
 }
 
 // A LINE_STRIP cannot simply be concatenated with the next strip, or the two

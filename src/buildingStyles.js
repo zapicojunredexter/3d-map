@@ -1,5 +1,11 @@
 import * as THREE from 'three'
 import { FEATURE_ID } from './mergeWorld'
+import {
+  advanceHighlight,
+  attachHighlight,
+  setHighlight,
+} from './featureHighlight'
+import { HOUSE_HIGHLIGHT } from './houseInstances'
 import { createRandom } from './surfaces'
 
 // The export gives every building the same white extrusion. Replacing them with
@@ -8,6 +14,10 @@ import { createRandom } from './surfaces'
 // nothing: no new geometry, no new assets, same draw call.
 
 export const BUILDINGS_LAYER = 'TPX_Buildings'
+
+// The one look that swaps geometry instead of materials, so App has to know it
+// by name to decide whether to draw the instanced houses.
+export const HOUSES_STYLE = 'houses'
 export const GROUND_LAYER = 'TPX_Ground'
 export const ROAD_LAYER = 'TPX_RoadsOutlines'
 
@@ -43,6 +53,7 @@ export const BUILDING_STYLES = [
     name: 'Survey',
     // null keeps the export's own white material, as a baseline to come back to.
     material: null,
+    highlight: { color: '#ffd08a', strength: 0.55 },
     shadows: true,
   },
   {
@@ -67,6 +78,7 @@ export const BUILDING_STYLES = [
       }),
     palette: ['#eaf4f8', '#d7e9f2', '#f2ece2', '#dfe6ea'],
     seed: 11,
+    highlight: { color: '#ffc46e', strength: 0.85 },
     edges: () =>
       new THREE.LineBasicMaterial({
         color: '#ffffff',
@@ -99,6 +111,9 @@ export const BUILDING_STYLES = [
         depthWrite: false,
       }),
     surfaces: { [GROUND_LAYER]: '#141c26', [ROAD_LAYER]: '#1b2734' },
+    // Additive blending multiplies the result by the material's 0.1 alpha, so
+    // this needs a far larger number than the lit styles to read at all.
+    highlight: { color: '#aefcff', strength: 6 },
     shadows: false,
   },
   {
@@ -120,11 +135,24 @@ export const BUILDING_STYLES = [
     seed: 29,
     // Kraft cardboard base, to sell the tabletop diorama.
     surfaces: { [GROUND_LAYER]: '#c79a6d', [ROAD_LAYER]: '#d9c0a0' },
+    highlight: { color: '#ffbe63', strength: 0.5 },
     shadows: true,
+  },
+  {
+    id: HOUSES_STYLE,
+    name: 'Houses',
+    // Houses replaces the blocks with real geometry rather than restyling them,
+    // so this entry only has to get the extrusions out of the way. They stay in
+    // the scene: an invisible mesh is still a collider and still raycasts, so
+    // walls hold and the crosshair can still name a building.
+    material: null,
+    hidden: true,
+    highlight: HOUSE_HIGHLIGHT,
+    shadows: false,
   },
 ]
 
-export const DEFAULT_BUILDING_STYLE = 'plain'
+export const DEFAULT_BUILDING_STYLE = HOUSES_STYLE
 
 export function findBuildingStyle(id) {
   return (
@@ -169,12 +197,28 @@ export function applyBuildingStyle(group, styleId) {
     swapMaterial(buildings, buildings.userData.baseMaterial)
   }
 
+  // Every style can glow, including the export's own material.
+  attachHighlight(buildings.material, style.highlight)
+  buildings.visible = !style.hidden
   buildings.castShadow = style.shadows
   buildings.receiveShadow = style.shadows
 
   applyEdges(buildings, style)
   applySurfaceTints(group, style)
   return group
+}
+
+// Pass null to clear. Switching styles builds a fresh material, so the caller
+// has to push the current pick again afterwards.
+export function setBuildingHighlight(group, slot) {
+  const buildings = group && layerMesh(group, BUILDINGS_LAYER)
+  return setHighlight(buildings?.material, slot)
+}
+
+// Per frame, to carry the glow towards whatever setBuildingHighlight asked for.
+export function advanceBuildingHighlight(group, delta) {
+  const buildings = group && layerMesh(group, BUILDINGS_LAYER)
+  return advanceHighlight(buildings?.material, delta)
 }
 
 // Wireframing the triangles would show every diagonal of the roof

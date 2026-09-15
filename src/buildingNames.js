@@ -4,7 +4,7 @@
 //
 //   'TPX_Buildings_412': 'Barangay Hall',
 export const BUILDING_NAMES = {
-  'TPX_Buildings_1555': 'Parian Drop-in Center'
+  'TPX_Buildings_1555': 'Village Hall'
 }
 
 export function labelFor(id, names = BUILDING_NAMES) {

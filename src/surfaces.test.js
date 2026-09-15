@@ -4,6 +4,7 @@ import {
   SURFACES,
   applySurfaces,
   createRandom,
+  paintGrass,
   paintGround,
   paintRoad,
   planarUv,
@@ -87,6 +88,16 @@ describe('planarUv', () => {
 
     expect([...uv.array]).toEqual([2, 1])
   })
+
+  it('compensates for wide texture packs so stones stay square', () => {
+    const geometry = new THREE.BufferGeometry().setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([4.5, 2.25, 0], 3),
+    )
+
+    // 2:1 map: 4.5m along X is one U, 2.25m along Y is one V.
+    expect([...planarUv(geometry, 4.5, 2).array]).toEqual([1, 1])
+  })
 })
 
 describe('painters', () => {
@@ -119,6 +130,16 @@ describe('painters', () => {
     expect(wideLines).toHaveLength(0)
   })
 
+  it('paints a denser green tile for parks', () => {
+    const ctx = recordingContext()
+
+    paintGrass(ctx, 512, createRandom(41))
+
+    expect(ctx.calls.fillRect[0]).toEqual([0, 0, 512, 512])
+    expect(ctx.calls.gradients).toBeGreaterThan(0)
+    expect(ctx.calls.strokes).toBeGreaterThan(100)
+  })
+
   it('paints the same tile for the same seed', () => {
     const first = recordingContext()
     const second = recordingContext()
@@ -133,7 +154,12 @@ describe('painters', () => {
 describe('applySurfaces', () => {
   const buildWorld = () => {
     const group = new THREE.Group()
-    for (const name of ['TPX_RoadsOutlines', 'TPX_Ground', 'TPX_Buildings']) {
+    for (const name of [
+      'TPX_RoadsOutlines',
+      'TPX_Ground',
+      'TPX_GreenAreas',
+      'TPX_Buildings',
+    ]) {
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(10, 10),
         new THREE.MeshStandardMaterial({ side: THREE.DoubleSide }),
@@ -153,15 +179,27 @@ describe('applySurfaces', () => {
     return group
   }
 
-  it('textures the ground and road surface only', () => {
-    const group = buildWorld()
+  const withMocks = (group) =>
+    applySurfaces(group, {
+      makeTexture: () => new THREE.Texture(),
+      makeGrassMaterial: (side) =>
+        new THREE.MeshStandardMaterial({ map: new THREE.Texture(), side }),
+      makeRoadMaterial: (side) =>
+        new THREE.MeshStandardMaterial({ map: new THREE.Texture(), side }),
+    })
 
-    applySurfaces(group, { makeTexture: () => new THREE.Texture() })
+  it('textures the ground, road and green surfaces only', () => {
+    const group = buildWorld()
+    withMocks(group)
 
     const textured = group.children
       .filter((child) => child.material?.map)
       .map((child) => child.name)
-    expect(textured.sort()).toEqual(['TPX_Ground', 'TPX_RoadsOutlines'])
+    expect(textured.sort()).toEqual([
+      'TPX_GreenAreas',
+      'TPX_Ground',
+      'TPX_RoadsOutlines',
+    ])
   })
 
   it('gives the textured layers the UVs the export never had', () => {
@@ -169,7 +207,7 @@ describe('applySurfaces', () => {
     const road = group.children.find((c) => c.name === 'TPX_RoadsOutlines')
     road.geometry.deleteAttribute('uv')
 
-    applySurfaces(group, { makeTexture: () => new THREE.Texture() })
+    withMocks(group)
 
     expect(road.geometry.getAttribute('uv')).toBeDefined()
     expect(road.geometry.getAttribute('uv').count).toBe(
@@ -182,7 +220,7 @@ describe('applySurfaces', () => {
     const buildings = group.children.find((c) => c.name === 'TPX_Buildings')
     const before = buildings.material
 
-    applySurfaces(group, { makeTexture: () => new THREE.Texture() })
+    withMocks(group)
 
     expect(buildings.material).toBe(before)
     expect(
@@ -192,8 +230,7 @@ describe('applySurfaces', () => {
 
   it('keeps the double-sided export geometry visible from below', () => {
     const group = buildWorld()
-
-    applySurfaces(group, { makeTexture: () => new THREE.Texture() })
+    withMocks(group)
 
     const ground = group.children.find((c) => c.name === 'TPX_Ground')
     expect(ground.material.side).toBe(THREE.DoubleSide)
@@ -203,6 +240,22 @@ describe('applySurfaces', () => {
     expect(SURFACES.map((surface) => surface.layer)).toEqual([
       'TPX_RoadsOutlines',
       'TPX_Ground',
+      'TPX_GreenAreas',
     ])
+  })
+
+  it('uses photo packs for roads, ground and parks', () => {
+    expect(SURFACES.find((s) => s.layer === 'TPX_RoadsOutlines').kind).toBe('road')
+    expect(SURFACES.find((s) => s.layer === 'TPX_Ground').kind).toBe('grass')
+    expect(SURFACES.find((s) => s.layer === 'TPX_GreenAreas').kind).toBe('grass')
+  })
+
+  it('gives photo layers a second UV set for ambient occlusion', () => {
+    const group = buildWorld()
+    withMocks(group)
+    const ground = group.children.find((c) => c.name === 'TPX_Ground')
+    expect(ground.geometry.getAttribute('uv2')).toBe(
+      ground.geometry.getAttribute('uv'),
+    )
   })
 })

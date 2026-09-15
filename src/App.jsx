@@ -20,17 +20,26 @@ import {
 import { calculateModelPlacement, isRoadSurface } from './world'
 import {
   collidableMeshes,
-  featureAt,
+  pickFeature,
   mergeWorldByLayer,
   solidMeshes,
 } from './mergeWorld'
 import { applySurfaces } from './surfaces'
 import { canopyTest, treePlacements } from './treeInstances'
-import { DEFAULT_BUILDING_STYLE, applyBuildingStyle } from './buildingStyles'
+import {
+  BUILDINGS_LAYER,
+  DEFAULT_BUILDING_STYLE,
+  HOUSES_STYLE,
+  advanceBuildingHighlight,
+  applyBuildingStyle,
+  setBuildingHighlight,
+} from './buildingStyles'
+import Trees from './Trees'
+import Houses from './Houses'
+import { buildingPlacements } from './houseInstances'
 import { headingFromForward } from './minimapMath'
 import { currentDecimalHour } from './timeOfDay'
 import Minimap from './Minimap'
-import Trees from './Trees'
 import Atmosphere from './Atmosphere'
 import FeatureLabel from './FeatureLabel'
 import SettingsPanel from './SettingsPanel'
@@ -58,16 +67,18 @@ class ModelErrorBoundary extends Component {
     return { error }
   }
 
+  componentDidCatch(error) {
+    console.error('World load failed:', error)
+  }
+
   render() {
     if (this.state.error) {
+      const detail = this.state.error?.message || String(this.state.error)
       return (
         <Html center>
           <div className="model-error" role="alert">
-            <strong>Map model not found</strong>
-            <span>
-              Add <code>topoexport_3D_modeling.glb</code> to{' '}
-              <code>assets</code>, then reload.
-            </span>
+            <strong>World failed to load</strong>
+            <span>{detail}</span>
           </div>
         </Html>
       )
@@ -84,6 +95,7 @@ function WorldModel({
   canopyRef,
   placementRef,
   buildingStyle,
+  highlight,
 }) {
   const { scene } = useGLTF(MODEL_URL)
   const gl = useThree((state) => state.gl)
@@ -105,11 +117,16 @@ function WorldModel({
       anisotropy: gl.capabilities.getMaxAnisotropy(),
     })
 
+    const blocks = merged.children.find(
+      (child) => child.isMesh && child.name === BUILDINGS_LAYER,
+    )
+
     return {
       object: merged,
       colliders: collidableMeshes(merged),
       solids: solidMeshes(merged),
       trees: treePlacements(scene, placement),
+      buildings: buildingPlacements(blocks, placement),
       placement,
     }
   }, [gl, scene])
@@ -125,6 +142,14 @@ function WorldModel({
     applyBuildingStyle(model.object, buildingStyle)
   }, [buildingStyle, model])
 
+  // Declared after the style effect so it runs second and re-pushes the pick
+  // onto the material a style switch just replaced.
+  useEffect(() => {
+    setBuildingHighlight(model.object, highlight)
+  }, [buildingStyle, highlight, model])
+
+  useFrame((state, delta) => advanceBuildingHighlight(model.object, delta))
+
   return (
     <group ref={worldRef}>
       <Bvh firstHitOnly>
@@ -135,6 +160,13 @@ function WorldModel({
         </group>
       </Bvh>
       <Trees placements={model.trees} />
+      {/* Its own boundary, so switching looks never drops the city back to the
+          loading screen while the house model arrives. */}
+      {buildingStyle === HOUSES_STYLE && (
+        <Suspense fallback={null}>
+          <Houses placements={model.buildings} highlight={highlight} />
+        </Suspense>
+      )}
     </group>
   )
 }
@@ -166,7 +198,7 @@ function ExplorerControls({
   }, [])
   const forward = useMemo(() => new THREE.Vector3(), [])
   const aim = useMemo(() => new THREE.Vector3(), [])
-  const aimedFeature = useRef(null)
+  const aimedSlot = useRef(null)
   const aimTimer = useRef(0)
   const right = useMemo(() => new THREE.Vector3(), [])
   const wish = useMemo(() => new THREE.Vector3(), [])
@@ -235,7 +267,7 @@ function ExplorerControls({
     raycaster.far = AIM_RANGE
     raycaster.firstHitOnly = true
     raycaster.set(camera.position, aim)
-    return featureAt(raycaster.intersectObjects(colliders, false)[0])
+    return pickFeature(raycaster.intersectObjects(colliders, false)[0])
   }
 
   // The topmost surface in a column has open sky, so a road there is walkable.
@@ -339,9 +371,11 @@ function ExplorerControls({
       if (aimTimer.current >= AIM_INTERVAL) {
         aimTimer.current = 0
         const found = aimedAt()
-        // Only on change, or this would re-render React every tick.
-        if (found !== aimedFeature.current) {
-          aimedFeature.current = found
+        // The slot, not the object: aimedAt builds a fresh one every probe, so
+        // identity would report a change every tick and re-render React.
+        const slot = found?.slot ?? null
+        if (slot !== aimedSlot.current) {
+          aimedSlot.current = slot
           onAimChange(found)
         }
       }
@@ -360,6 +394,7 @@ function ExplorerControls({
 function Scene({
   hour,
   buildingStyle,
+  highlight,
   onLockedChange,
   onAimChange,
   poseRef,
@@ -382,6 +417,7 @@ function Scene({
             canopyRef={canopyRef}
             placementRef={placementRef}
             buildingStyle={buildingStyle}
+            highlight={highlight}
           />
           <Environment preset="park" />
         </Suspense>
@@ -440,6 +476,7 @@ export default function App() {
         <Scene
           hour={hour}
           buildingStyle={buildingStyle}
+          highlight={aimedFeature?.slot ?? null}
           onLockedChange={handleLockedChange}
           onAimChange={setAimedFeature}
           poseRef={poseRef}
@@ -489,7 +526,7 @@ export default function App() {
       )}
       <Minimap poseRef={poseRef} placementRef={placementRef} />
       {locked && <Crosshair />}
-      {locked && <FeatureLabel id={aimedFeature} />}
+      {locked && <FeatureLabel id={aimedFeature?.name ?? null} />}
       <div className="vignette" aria-hidden="true" />
     </main>
   )

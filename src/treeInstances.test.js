@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
   CANOPY_SQUEEZE,
+  TREE_ANIM_RADIUS,
   TREE_CONTAINER,
+  advanceTreeAnimations,
+  buildAnimatedTrees,
   buildTrees,
   canopyTest,
   chunkPlacements,
   instanceMatrices,
   normalizeTreeModel,
   placementMatrix,
+  prepareAnimatedTree,
   treeMaterial,
   treePlacements,
 } from './treeInstances'
@@ -299,5 +303,93 @@ describe('canopyTest', () => {
 
   it('is clear everywhere when nothing is planted', () => {
     expect(canopyTest([])(0, 0)).toBe(false)
+  })
+})
+
+function skinnedTreeScene() {
+  const scene = new THREE.Group()
+  const bone = new THREE.Bone()
+  bone.name = 'Trunk'
+  bone.position.y = 1
+  const skeleton = new THREE.Skeleton([bone])
+  const geometry = new THREE.BoxGeometry(2, 10, 2)
+  geometry.translate(0, 5, 0)
+  const mesh = new THREE.SkinnedMesh(
+    geometry,
+    new THREE.MeshStandardMaterial({ transparent: true }),
+  )
+  mesh.name = 'foliage'
+  mesh.add(bone)
+  mesh.bind(skeleton)
+  scene.add(mesh)
+  return scene
+}
+
+describe('prepareAnimatedTree', () => {
+  it('rebases a skinned tree to one unit tall without flattening bones', () => {
+    const { template, spread } = prepareAnimatedTree(skinnedTreeScene())
+    template.updateMatrixWorld(true)
+    const bounds = new THREE.Box3()
+    template.traverse((object) => {
+      if (!object.isMesh || !object.geometry) return
+      if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
+      bounds.union(
+        object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld),
+      )
+    })
+
+    expect(bounds.min.y).toBeCloseTo(0)
+    expect(bounds.max.y).toBeCloseTo(1)
+    expect(spread).toBeCloseTo(0.2)
+
+    let bones = 0
+    template.traverse((object) => {
+      if (object.isSkinnedMesh) {
+        expect(object.skeleton.bones).toHaveLength(1)
+        expect(object.material.alphaTest).toBe(0.5)
+        bones += 1
+      }
+    })
+    expect(bones).toBe(1)
+  })
+})
+
+describe('buildAnimatedTrees', () => {
+  it('plants one skinned clone per placement and wires mixers', () => {
+    const model = prepareAnimatedTree(skinnedTreeScene())
+    const clip = new THREE.AnimationClip('sway', 1, [
+      new THREE.VectorKeyframeTrack('Trunk.position', [0, 1], [0, 1, 0, 0, 1.1, 0]),
+    ])
+    const placements = [
+      { x: 0, y: 0, z: 0, height: 8, radius: 3 },
+      { x: 20, y: 0, z: 5, height: 9, radius: 3 },
+    ]
+
+    const group = buildAnimatedTrees(model, [clip], placements)
+
+    expect(group.children).toHaveLength(2)
+    expect(group.userData.mixers).toHaveLength(2)
+    expect(group.children[0].scale.y).toBeCloseTo(8)
+    expect(group.children[1].position.x).toBeCloseTo(20)
+  })
+
+  it('only advances mixers near the camera', () => {
+    const model = prepareAnimatedTree(skinnedTreeScene())
+    const clip = new THREE.AnimationClip('sway', 2, [
+      new THREE.VectorKeyframeTrack('Trunk.position', [0, 2], [0, 1, 0, 0, 1.2, 0]),
+    ])
+    const group = buildAnimatedTrees(model, [clip], [
+      { x: 0, y: 0, z: 0, height: 8, radius: 3 },
+      { x: TREE_ANIM_RADIUS * 3, y: 0, z: 0, height: 8, radius: 3 },
+    ])
+
+    const [near, far] = group.userData.mixers
+    const nearTime = near.mixer.time
+    const farTime = far.mixer.time
+
+    advanceTreeAnimations(group, 0.25, new THREE.Vector3(0, 0, 0))
+
+    expect(near.mixer.time).toBeGreaterThan(nearTime)
+    expect(far.mixer.time).toBe(farTime)
   })
 })

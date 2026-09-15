@@ -1,8 +1,14 @@
 import * as THREE from 'three'
+import { GRASS_TILE_METERS, createGrassMaterial } from './grassMaps'
+import {
+  ROAD_TILE_ASPECT,
+  ROAD_TILE_METERS,
+  createRoadMaterial,
+} from './roadMaps'
+import { applyRoadEdge } from './roadEdges'
 
 // TopoExport ships flat colour and no UVs, so the ground reads as blank white
-// card. These painters build tiling textures at runtime, which keeps the look
-// adjustable without needing any new art assets.
+// card. Roads still get a procedural tile; lawns use the ambientCG grass pack.
 
 export const TEXTURE_SIZE = 512
 
@@ -17,13 +23,16 @@ export function createRandom(seed = 1) {
 
 // The merged export is still Z-up, so its ground plane is XY. Dividing world
 // metres by the tile size lets one texture repeat across the whole city.
-export function planarUv(geometry, tileMeters) {
+// aspect > 1 is for packs whose colour map is wider than tall (e.g. 1024×512),
+// so a square metre of road stays square on the texture too.
+export function planarUv(geometry, tileMeters, aspect = 1) {
   const position = geometry.getAttribute('position')
   const uv = new Float32Array(position.count * 2)
+  const tileV = tileMeters / aspect
 
   for (let index = 0; index < position.count; index += 1) {
     uv[index * 2] = position.getX(index) / tileMeters
-    uv[index * 2 + 1] = position.getY(index) / tileMeters
+    uv[index * 2 + 1] = position.getY(index) / tileV
   }
 
   return new THREE.BufferAttribute(uv, 2)
@@ -152,20 +161,74 @@ export function paintGround(ctx, size, random) {
   ])
 }
 
+// Parks and yards from the survey. Kept denser and greener than the dirt tile,
+// with soft shade patches so it does not read as a flat green carpet.
+export function paintGrass(ctx, size, random) {
+  ctx.fillStyle = '#4a6b3a'
+  ctx.fillRect(0, 0, size, size)
+
+  for (let index = 0; index < 55; index += 1) {
+    const pick = random()
+    const rgb =
+      pick < 0.28
+        ? '90,130,70' // sunlit
+        : pick < 0.55
+          ? '52,86,42' // mid shade
+          : pick < 0.78
+            ? '34,58,30' // damp under trees
+            : '118,128,72' // dry tip / thatch
+    stain(
+      ctx,
+      size,
+      random() * size,
+      random() * size,
+      size * (0.06 + random() * 0.2),
+      rgb,
+      0.22 + random() * 0.28,
+    )
+  }
+
+  // Short blade hints at texture scale. Soft and short so tiling does not
+  // become a stripe field from above.
+  for (let index = 0; index < 900; index += 1) {
+    const x = random() * size
+    const y = random() * size
+    const h = 2 + random() * 5
+    ctx.strokeStyle =
+      random() < 0.5 ? 'rgba(70,110,55,0.35)' : 'rgba(40,70,35,0.3)'
+    ctx.lineWidth = 1
+    seamless(ctx, size, () => {
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineTo(x + (random() - 0.5) * 3, y - h)
+      ctx.stroke()
+    })
+  }
+
+  speckle(ctx, size, random, 12000, [
+    '#5f8a48',
+    '#3d5e32',
+    '#6e9a52',
+    '#2f4a28',
+  ])
+}
+
 export const SURFACES = [
   {
     layer: 'TPX_RoadsOutlines',
-    tile: 9,
-    seed: 7,
-    roughness: 0.8,
-    paint: paintRoad,
+    tile: ROAD_TILE_METERS,
+    aspect: ROAD_TILE_ASPECT,
+    kind: 'road',
   },
   {
     layer: 'TPX_Ground',
-    tile: 14,
-    seed: 21,
-    roughness: 0.96,
-    paint: paintGround,
+    tile: GRASS_TILE_METERS,
+    kind: 'grass',
+  },
+  {
+    layer: 'TPX_GreenAreas',
+    tile: GRASS_TILE_METERS,
+    kind: 'grass',
   },
 ]
 
@@ -189,13 +252,33 @@ export function createSurfaceTexture(surface, { anisotropy = 1 } = {}) {
 }
 
 export function applySurfaces(group, options = {}) {
-  const { makeTexture = createSurfaceTexture, anisotropy = 1 } = options
+  const {
+    makeTexture = createSurfaceTexture,
+    makeGrassMaterial = createGrassMaterial,
+    makeRoadMaterial = createRoadMaterial,
+    anisotropy = 1,
+  } = options
 
   for (const surface of SURFACES) {
     for (const mesh of group.children) {
       if (!mesh.isMesh || mesh.name !== surface.layer) continue
 
-      mesh.geometry.setAttribute('uv', planarUv(mesh.geometry, surface.tile))
+      const uv = planarUv(mesh.geometry, surface.tile, surface.aspect ?? 1)
+      mesh.geometry.setAttribute('uv', uv)
+      // aoMap reads the second UV set; parks, ground and roads share one layout.
+      mesh.geometry.setAttribute('uv2', uv)
+
+      if (surface.kind === 'grass') {
+        mesh.material = makeGrassMaterial(mesh.material.side, { anisotropy })
+        continue
+      }
+
+      if (surface.kind === 'road') {
+        mesh.material = makeRoadMaterial(mesh.material.side, { anisotropy })
+        applyRoadEdge(mesh)
+        continue
+      }
+
       const map = makeTexture(surface, { anisotropy })
       mesh.material = new THREE.MeshStandardMaterial({
         map,

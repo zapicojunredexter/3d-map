@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { createRandom } from './surfaces'
 
 // TopoExport models every tree as a trunk cylinder and a crown blob wrapped in
@@ -16,6 +17,10 @@ export const TREE_CELL_SIZE = 150
 // for are noticeably narrower. Left alone, crowns swallow the pavements, so
 // they get pulled in to sit between the two.
 export const CANOPY_SQUEEZE = 0.85
+
+// Skeletal sway is only worth evaluating near the camera. Far trees keep the
+// last pose they were left in, which is invisible at that distance.
+export const TREE_ANIM_RADIUS = 140
 
 const UP = new THREE.Vector3(0, 1, 0)
 
@@ -170,6 +175,133 @@ export function buildTrees({ parts }, placements, cellSize = TREE_CELL_SIZE) {
   }
 
   return group
+}
+
+// Animated glTF trees keep their skeleton. The source is wrapped so the root
+// stands one unit tall on y=0; planting then only needs position, yaw and scale.
+function objectBounds(root) {
+  const bounds = new THREE.Box3()
+  root.traverse((object) => {
+    if (!object.isMesh || !object.geometry) return
+    const { geometry } = object
+    if (!geometry.boundingBox) geometry.computeBoundingBox()
+    // Prefer the bind-pose box: setFromObject skin-transforms and needs
+    // JOINTS/WEIGHTS that a hand-built test mesh may not carry.
+    bounds.union(geometry.boundingBox.clone().applyMatrix4(object.matrixWorld))
+  })
+  return bounds
+}
+
+export function prepareAnimatedTree(scene) {
+  const root = cloneSkeleton(scene)
+  root.updateMatrixWorld(true)
+
+  const bounds = objectBounds(root)
+  if (bounds.isEmpty()) throw new Error('Tree model has no meshes')
+
+  const size = bounds.getSize(new THREE.Vector3())
+  const center = bounds.getCenter(new THREE.Vector3())
+  if (size.y <= 0) throw new Error('Tree model has no height')
+
+  root.position.set(-center.x, -bounds.min.y, -center.z)
+  root.scale.setScalar(1 / size.y)
+  root.updateMatrixWorld(true)
+
+  const materials = new Map()
+  root.traverse((object) => {
+    if (!object.isMesh) return
+    object.castShadow = true
+    object.receiveShadow = true
+    // Gentle sway can push verts outside the bind-pose sphere.
+    object.frustumCulled = false
+
+    const sources = Array.isArray(object.material)
+      ? object.material
+      : [object.material]
+    const replaced = sources.map((source) => {
+      if (!source) return source
+      let material = materials.get(source)
+      if (!material) {
+        material = treeMaterial(source)
+        materials.set(source, material)
+      }
+      return material
+    })
+    object.material = Array.isArray(object.material) ? replaced : replaced[0]
+  })
+
+  const template = new THREE.Group()
+  template.name = 'TreeTemplate'
+  template.add(root)
+
+  return {
+    template,
+    spread: Math.max(size.x, size.z) / size.y,
+  }
+}
+
+export function buildAnimatedTrees(
+  { template },
+  clips,
+  placements,
+  cellSize = TREE_CELL_SIZE,
+) {
+  const group = new THREE.Group()
+  group.name = 'TPX_Trees'
+  const mixers = []
+  group.userData.mixers = mixers
+
+  const clip = clips[0]
+  if (!clip) return group
+
+  const random = createRandom(TREE_SEED)
+
+  for (const cell of chunkPlacements(placements, cellSize)) {
+    for (const placement of cell) {
+      const tree = cloneSkeleton(template)
+      const width = placement.height * CANOPY_SQUEEZE * (0.92 + random() * 0.16)
+      tree.position.set(placement.x, placement.y, placement.z)
+      tree.rotation.y = random() * Math.PI * 2
+      tree.scale.set(width, placement.height, width)
+
+      const mixer = new THREE.AnimationMixer(tree)
+      const action = mixer.clipAction(clip)
+      action.play()
+      action.time = random() * clip.duration
+      action.timeScale = 0.85 + random() * 0.3
+      mixer.update(0)
+
+      mixers.push({
+        mixer,
+        x: placement.x,
+        z: placement.z,
+      })
+      group.add(tree)
+    }
+  }
+
+  return group
+}
+
+export function advanceTreeAnimations(
+  group,
+  delta,
+  camera,
+  radius = TREE_ANIM_RADIUS,
+) {
+  const mixers = group?.userData?.mixers
+  if (!mixers?.length) return
+
+  const radiusSq = radius * radius
+  const cx = camera.x
+  const cz = camera.z
+
+  for (const entry of mixers) {
+    const dx = entry.x - cx
+    const dz = entry.z - cz
+    if (dx * dx + dz * dz > radiusSq) continue
+    entry.mixer.update(delta)
+  }
 }
 
 // Spawning used to raycast upwards against the merged crowns to avoid starting

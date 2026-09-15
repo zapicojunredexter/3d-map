@@ -8,6 +8,7 @@ import {
   layerFromName,
   layerOf,
   mergeWorldByLayer,
+  pickFeature,
   stripToSegments,
 } from './mergeWorld'
 
@@ -134,6 +135,11 @@ describe('mergeWorldByLayer', () => {
       )
       const [hit] = raycaster.intersectObject(buildings, false)
       expect(featureAt(hit)).toBe(`TPX_Buildings_${index}`)
+      // The slot is what the highlight shader compares against.
+      expect(pickFeature(hit)).toEqual({
+        slot: index,
+        name: `TPX_Buildings_${index}`,
+      })
     }
   })
 
