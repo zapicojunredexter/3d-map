@@ -32,9 +32,8 @@ import { currentDecimalHour } from './timeOfDay'
 import Minimap from './Minimap'
 import Trees from './Trees'
 import Atmosphere from './Atmosphere'
-import TimeAdjuster from './TimeAdjuster'
 import FeatureLabel from './FeatureLabel'
-import BuildingStylePicker from './BuildingStylePicker'
+import SettingsPanel from './SettingsPanel'
 import modelUrl from '../assets/topoexport_3D_modeling.glb?url'
 
 export const MODEL_URL = modelUrl
@@ -405,11 +404,25 @@ function Crosshair() {
 
 export default function App() {
   const [locked, setLocked] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [aimedFeature, setAimedFeature] = useState(null)
   const [buildingStyle, setBuildingStyle] = useState(DEFAULT_BUILDING_STYLE)
   const [hour, setHour] = useState(() => currentDecimalHour())
+  const hasEnteredRef = useRef(false)
   const poseRef = useRef({ x: 0, z: 0, heading: 0 })
   const placementRef = useRef(null)
+  const requestPointerLock = () =>
+    document.querySelector('canvas')?.requestPointerLock()
+
+  const handleLockedChange = (nextLocked) => {
+    setLocked(nextLocked)
+    if (nextLocked) {
+      hasEnteredRef.current = true
+      setSettingsOpen(false)
+    } else if (hasEnteredRef.current) {
+      setSettingsOpen(true)
+    }
+  }
 
   return (
     <main>
@@ -427,7 +440,7 @@ export default function App() {
         <Scene
           hour={hour}
           buildingStyle={buildingStyle}
-          onLockedChange={setLocked}
+          onLockedChange={handleLockedChange}
           onAimChange={setAimedFeature}
           poseRef={poseRef}
           placementRef={placementRef}
@@ -439,14 +452,14 @@ export default function App() {
         <h1>Terrain Explorer</h1>
       </header>
 
-      {!locked && (
+      {!locked && !settingsOpen && (
         <button
           className="enter"
           type="button"
-          onClick={() => document.querySelector('canvas')?.requestPointerLock()}
+          onClick={requestPointerLock}
         >
           <span>Enter the map</span>
-          <small>Click to look around</small>
+          <small>Click to look around · Esc opens settings</small>
         </button>
       )}
 
@@ -459,15 +472,21 @@ export default function App() {
         </div>
         <div>
           <strong>Move</strong>
-          <span>Mouse to look · Shift sprint · Space jump · R reset</span>
+          <span>
+            Mouse look · Shift sprint · Space jump · R reset · Esc pause/settings
+          </span>
         </div>
       </aside>
 
-      <TimeAdjuster hour={hour} onChange={setHour} />
-      <BuildingStylePicker
-        styleId={buildingStyle}
-        onChange={setBuildingStyle}
-      />
+      {settingsOpen && (
+        <SettingsPanel
+          hour={hour}
+          onHourChange={setHour}
+          buildingStyle={buildingStyle}
+          onBuildingStyleChange={setBuildingStyle}
+          onResume={requestPointerLock}
+        />
+      )}
       <Minimap poseRef={poseRef} placementRef={placementRef} />
       {locked && <Crosshair />}
       {locked && <FeatureLabel id={aimedFeature} />}

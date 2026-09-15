@@ -3,7 +3,9 @@
 // give a block a real name; anything unlisted falls back to showing its id.
 //
 //   'TPX_Buildings_412': 'Barangay Hall',
-export const BUILDING_NAMES = {}
+export const BUILDING_NAMES = {
+  'TPX_Buildings_1555': 'Parian Drop-in Center'
+}
 
 export function labelFor(id, names = BUILDING_NAMES) {
   if (!id) return null
