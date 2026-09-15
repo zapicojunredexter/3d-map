@@ -20,8 +20,13 @@ import {
 import { calculateModelPlacement, isRoadSurface } from './world'
 import { collidableMeshes, mergeWorldByLayer, solidMeshes } from './mergeWorld'
 import { applySurfaces } from './surfaces'
+import { canopyTest, treePlacements } from './treeInstances'
 import { headingFromForward } from './minimapMath'
+import { currentDecimalHour } from './timeOfDay'
 import Minimap from './Minimap'
+import Trees from './Trees'
+import Atmosphere from './Atmosphere'
+import TimeAdjuster from './TimeAdjuster'
 import modelUrl from '../assets/topoexport_3D_modeling.glb?url'
 
 export const MODEL_URL = modelUrl
@@ -65,12 +70,14 @@ class ModelErrorBoundary extends Component {
   }
 }
 
-function WorldModel({ worldRef, collidersRef, solidsRef, placementRef }) {
+function WorldModel({ worldRef, collidersRef, solidsRef, canopyRef, placementRef }) {
   const { scene } = useGLTF(MODEL_URL)
   const gl = useThree((state) => state.gl)
 
   const model = useMemo(() => {
-    const merged = mergeWorldByLayer(scene)
+    // The export's trees are trunk-and-blob placeholders. Trees draws a real
+    // model at each of their positions instead, so they never reach the city.
+    const merged = mergeWorldByLayer(scene, { skip: ['TPX_Trees'] })
     const placement = calculateModelPlacement(merged)
 
     for (const child of merged.children) {
@@ -85,6 +92,7 @@ function WorldModel({ worldRef, collidersRef, solidsRef, placementRef }) {
       object: merged,
       colliders: collidableMeshes(merged),
       solids: solidMeshes(merged),
+      trees: treePlacements(scene, placement),
       placement,
     }
   }, [gl, scene])
@@ -93,20 +101,30 @@ function WorldModel({ worldRef, collidersRef, solidsRef, placementRef }) {
     if (placementRef) placementRef.current = model.placement
     if (collidersRef) collidersRef.current = model.colliders
     if (solidsRef) solidsRef.current = model.solids
-  }, [collidersRef, model, placementRef, solidsRef])
+    if (canopyRef) canopyRef.current = canopyTest(model.trees)
+  }, [canopyRef, collidersRef, model, placementRef, solidsRef])
 
   return (
     <group ref={worldRef}>
-      <group position={model.placement.position}>
-        <group rotation={model.placement.rotation}>
-          <primitive object={model.object} />
+      <Bvh firstHitOnly>
+        <group position={model.placement.position}>
+          <group rotation={model.placement.rotation}>
+            <primitive object={model.object} />
+          </group>
         </group>
-      </group>
+      </Bvh>
+      <Trees placements={model.trees} />
     </group>
   )
 }
 
-function ExplorerControls({ collidersRef, solidsRef, onLockedChange, poseRef }) {
+function ExplorerControls({
+  collidersRef,
+  solidsRef,
+  canopyRef,
+  onLockedChange,
+  poseRef,
+}) {
   const { camera } = useThree()
   const controlsRef = useRef()
   const player = useRef(createPlayerState())
@@ -163,6 +181,10 @@ function ExplorerControls({ collidersRef, solidsRef, onLockedChange, poseRef }) 
   }
 
   const hasHeadroom = (x, z, groundY) => {
+    // Crowns are instanced rather than part of the scene's raycast targets, so
+    // the planting points answer for them.
+    if (canopyRef?.current?.(x, z)) return false
+
     const solids = solidsRef.current
     if (!solids) return true
     origin.set(x, groundY + PLAYER.eyeHeight, z)
@@ -278,43 +300,31 @@ function ExplorerControls({ collidersRef, solidsRef, onLockedChange, poseRef }) 
   )
 }
 
-function Scene({ onLockedChange, poseRef, placementRef }) {
+function Scene({ hour, onLockedChange, poseRef, placementRef }) {
   const worldRef = useRef()
   const collidersRef = useRef(null)
   const solidsRef = useRef(null)
+  const canopyRef = useRef(null)
 
   return (
     <>
-      <color attach="background" args={['#6d8f9c']} />
-      <fog attach="fog" args={['#6d8f9c', 250, 1100]} />
-      <ambientLight intensity={0.9} />
-      <directionalLight
-        castShadow
-        intensity={2.2}
-        position={[80, 160, 40]}
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={400}
-        shadow-camera-left={-160}
-        shadow-camera-right={160}
-        shadow-camera-top={160}
-        shadow-camera-bottom={-160}
-      />
+      <Atmosphere hour={hour} />
       <ModelErrorBoundary>
         <Suspense fallback={<LoadingScreen />}>
-          <Bvh firstHitOnly>
-            <WorldModel
-              worldRef={worldRef}
-              collidersRef={collidersRef}
-              solidsRef={solidsRef}
-              placementRef={placementRef}
-            />
-          </Bvh>
+          <WorldModel
+            worldRef={worldRef}
+            collidersRef={collidersRef}
+            solidsRef={solidsRef}
+            canopyRef={canopyRef}
+            placementRef={placementRef}
+          />
           <Environment preset="park" />
         </Suspense>
       </ModelErrorBoundary>
       <ExplorerControls
         collidersRef={collidersRef}
         solidsRef={solidsRef}
+        canopyRef={canopyRef}
         onLockedChange={onLockedChange}
         poseRef={poseRef}
       />
@@ -328,6 +338,7 @@ function Crosshair() {
 
 export default function App() {
   const [locked, setLocked] = useState(false)
+  const [hour, setHour] = useState(() => currentDecimalHour())
   const poseRef = useRef({ x: 0, z: 0, heading: 0 })
   const placementRef = useRef(null)
 
@@ -345,6 +356,7 @@ export default function App() {
         gl={{ antialias: true, powerPreference: 'high-performance' }}
       >
         <Scene
+          hour={hour}
           onLockedChange={setLocked}
           poseRef={poseRef}
           placementRef={placementRef}
@@ -380,6 +392,7 @@ export default function App() {
         </div>
       </aside>
 
+      <TimeAdjuster hour={hour} onChange={setHour} />
       <Minimap poseRef={poseRef} placementRef={placementRef} />
       {locked && <Crosshair />}
       <div className="vignette" aria-hidden="true" />

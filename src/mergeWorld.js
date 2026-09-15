@@ -111,7 +111,9 @@ function mergedObject(group) {
   return object
 }
 
-export function mergeWorldByLayer(root) {
+// Pass skip for layers something else draws, so their geometry is not merged
+// into the city only to be hidden again.
+export function mergeWorldByLayer(root, { skip = [] } = {}) {
   root.updateMatrixWorld(true)
   const rootInverse = root.matrixWorld.clone().invert()
   const toRoot = new THREE.Matrix4()
@@ -122,6 +124,8 @@ export function mergeWorldByLayer(root) {
     if ((!object.isMesh && !isLine) || !object.geometry) return
 
     const layer = layerOf(object)
+    if (skip.includes(layer)) return
+
     const material = Array.isArray(object.material)
       ? object.material[0]
       : object.material

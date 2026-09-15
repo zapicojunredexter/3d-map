@@ -107,6 +107,22 @@ describe('mergeWorldByLayer', () => {
     const [hit] = raycaster.intersectObject(merged, true)
     expect(hit?.point.y).toBeCloseTo(0.5)
   })
+
+  it('leaves out layers something else draws', () => {
+    const material = new THREE.MeshStandardMaterial()
+    const root = new THREE.Group()
+    const building = boxAt(0, 0, material)
+    building.name = 'TPX_Buildings_0'
+    const crown = boxAt(10, 0, material)
+    crown.name = 'TPX_Trees_crown_0_instance_3'
+    const trunk = boxAt(10, 0, material)
+    trunk.name = 'TPX_Trees_trunk_0'
+    root.add(building, crown, trunk)
+
+    const merged = mergeWorldByLayer(root, { skip: ['TPX_Trees'] })
+
+    expect(merged.children.map((mesh) => mesh.name)).toEqual(['TPX_Buildings'])
+  })
 })
 
 describe('line layers', () => {
