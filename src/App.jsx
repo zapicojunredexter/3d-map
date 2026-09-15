@@ -19,6 +19,7 @@ import {
 } from './player'
 import { calculateModelPlacement, isRoadSurface } from './world'
 import { collidableMeshes, mergeWorldByLayer, solidMeshes } from './mergeWorld'
+import { applySurfaces } from './surfaces'
 import { headingFromForward } from './minimapMath'
 import Minimap from './Minimap'
 import modelUrl from '../assets/topoexport_3D_modeling.glb?url'
@@ -66,6 +67,7 @@ class ModelErrorBoundary extends Component {
 
 function WorldModel({ worldRef, collidersRef, solidsRef, placementRef }) {
   const { scene } = useGLTF(MODEL_URL)
+  const gl = useThree((state) => state.gl)
 
   const model = useMemo(() => {
     const merged = mergeWorldByLayer(scene)
@@ -75,6 +77,9 @@ function WorldModel({ worldRef, collidersRef, solidsRef, placementRef }) {
       child.material = child.material.clone()
       if (child.isMesh) child.material.envMapIntensity = 0.65
     }
+    applySurfaces(merged, {
+      anisotropy: gl.capabilities.getMaxAnisotropy(),
+    })
 
     return {
       object: merged,
@@ -82,7 +87,7 @@ function WorldModel({ worldRef, collidersRef, solidsRef, placementRef }) {
       solids: solidMeshes(merged),
       placement,
     }
-  }, [scene])
+  }, [gl, scene])
 
   useEffect(() => {
     if (placementRef) placementRef.current = model.placement
