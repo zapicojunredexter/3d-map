@@ -1,0 +1,256 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700&display=swap');
+
+:root {
+  font-family: 'Manrope', sans-serif;
+  color: #f2f6ec;
+  background: #101713;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root,
+main {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+canvas {
+  display: block;
+}
+
+.brand {
+  position: fixed;
+  z-index: 2;
+  top: clamp(24px, 4vw, 48px);
+  left: clamp(24px, 4vw, 56px);
+  pointer-events: none;
+  text-shadow: 0 2px 20px rgb(4 14 8 / 55%);
+}
+
+.brand h1 {
+  margin: 4px 0 0;
+  font-size: clamp(24px, 3vw, 42px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.eyebrow {
+  font-family: 'DM Mono', monospace;
+  color: #d4e56f;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.enter {
+  position: fixed;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  min-width: 210px;
+  padding: 17px 24px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 4px;
+  color: #f5f8ef;
+  background: rgb(13 24 17 / 78%);
+  box-shadow: 0 18px 70px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  flex-direction: column;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.enter:hover {
+  border-color: #d4e56f;
+  background: rgb(20 34 24 / 92%);
+  transform: translate(-50%, -50%) scale(1.02);
+}
+
+.enter span {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.enter small {
+  margin-top: 3px;
+  color: #aeb9ad;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+}
+
+.controls {
+  position: fixed;
+  z-index: 2;
+  right: clamp(18px, 4vw, 56px);
+  bottom: clamp(18px, 4vw, 44px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #eef3e9;
+  pointer-events: none;
+}
+
+.controls > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.controls strong {
+  font-size: 12px;
+}
+
+.controls span {
+  color: rgb(238 243 233 / 65%);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  max-width: 220px;
+}
+
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 22px);
+  gap: 3px;
+}
+
+kbd {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 3px;
+  color: rgb(255 255 255 / 80%);
+  background: rgb(6 13 8 / 50%);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  place-items: center;
+}
+
+kbd:first-child {
+  grid-column: 2;
+}
+
+kbd:nth-child(2) {
+  grid-column: 1;
+}
+
+.crosshair {
+  position: fixed;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border: 1px solid rgb(255 255 255 / 85%);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgb(0 0 0 / 50%);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.loader,
+.model-error {
+  display: flex;
+  width: min(330px, 80vw);
+  padding: 20px 22px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 5px;
+  color: #eef3e9;
+  background: rgb(13 24 17 / 88%);
+  box-shadow: 0 18px 70px rgb(0 0 0 / 30%);
+  backdrop-filter: blur(16px);
+}
+
+.loader {
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.loader strong {
+  color: #d4e56f;
+  font-family: 'DM Mono', monospace;
+}
+
+.model-error {
+  flex-direction: column;
+  gap: 7px;
+  text-align: center;
+}
+
+.model-error strong {
+  color: #e5ed9f;
+}
+
+.model-error span {
+  color: #b7c1b5;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.model-error code {
+  color: #fff;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+}
+
+.minimap {
+  position: fixed;
+  z-index: 3;
+  left: clamp(16px, 3vw, 36px);
+  bottom: clamp(16px, 3vw, 36px);
+  width: 176px;
+  height: 176px;
+  pointer-events: none;
+  filter: drop-shadow(0 16px 28px rgb(0 0 0 / 45%));
+}
+
+.minimap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.vignette {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(2 9 5 / 26%), transparent 25%),
+    radial-gradient(circle, transparent 50%, rgb(2 8 4 / 32%) 130%);
+  pointer-events: none;
+}
+
+@media (max-width: 620px) {
+  .controls {
+    right: 16px;
+    bottom: 210px;
+    left: auto;
+  }
+
+  .controls span {
+    max-width: 170px;
+  }
+
+  .minimap {
+    width: 148px;
+    height: 148px;
+  }
+}
