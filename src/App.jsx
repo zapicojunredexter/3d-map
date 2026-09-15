@@ -25,7 +25,7 @@ import {
   solidMeshes,
 } from './mergeWorld'
 import { applySurfaces } from './surfaces'
-import { DAY_HDRI_URL } from './waterMaps'
+import { DAY_HDRI_URL, advanceWaterFlow } from './waterMaps'
 import { canopyTest, treePlacements } from './treeInstances'
 import {
   BUILDINGS_LAYER,
@@ -149,7 +149,10 @@ function WorldModel({
     setBuildingHighlight(model.object, highlight)
   }, [buildingStyle, highlight, model])
 
-  useFrame((state, delta) => advanceBuildingHighlight(model.object, delta))
+  useFrame((state, delta) => {
+    advanceBuildingHighlight(model.object, delta)
+    advanceWaterFlow(model.object, delta)
+  })
 
   return (
     <group ref={worldRef}>
@@ -444,7 +447,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aimedFeature, setAimedFeature] = useState(null)
   const [buildingStyle, setBuildingStyle] = useState(DEFAULT_BUILDING_STYLE)
-  const [hour, setHour] = useState(() => 6)
+  const [hour, setHour] = useState(() => 8)
   const hasEnteredRef = useRef(false)
   const poseRef = useRef({ x: 0, z: 0, heading: 0 })
   const placementRef = useRef(null)
