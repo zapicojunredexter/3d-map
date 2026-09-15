@@ -38,6 +38,29 @@ export function isCollidableLayer(name) {
   return COLLIDABLE_LAYERS.includes(layerFromName(name) || name)
 }
 
+// Merging a layer throws away the per-feature node names, which is exactly what
+// picking needs. Tagging every vertex with its feature's slot carries that
+// identity inside the merged geometry, so a raycast can name what it hit
+// without giving up the single draw call.
+export const FEATURE_ID = 'featureId'
+
+function tagFeature(geometry, slot) {
+  const { count } = geometry.getAttribute('position')
+  const slots = new Float32Array(count).fill(slot)
+  geometry.setAttribute(FEATURE_ID, new THREE.BufferAttribute(slots, 1))
+  return geometry
+}
+
+// The name of the feature a raycast hit, or null when that surface carries no
+// identity. The tag is per-vertex, so the hit triangle answers for it.
+export function featureAt(intersection) {
+  const names = intersection?.object?.userData?.featureNames
+  const slots = intersection?.object?.geometry?.getAttribute?.(FEATURE_ID)
+  const vertex = intersection?.face?.a
+  if (!names || !slots || vertex == null) return null
+  return names[slots.getX(vertex)] ?? null
+}
+
 // A LINE_STRIP cannot simply be concatenated with the next strip, or the two
 // would be joined by a stray segment. Expanding to discrete pairs lets every
 // line in a layer share one draw call.
@@ -108,12 +131,14 @@ function mergedObject(group) {
   object.name = group.layer
   object.castShadow = !group.isLine
   object.receiveShadow = !group.isLine
+  if (group.names) object.userData.featureNames = group.names
   return object
 }
 
 // Pass skip for layers something else draws, so their geometry is not merged
-// into the city only to be hidden again.
-export function mergeWorldByLayer(root, { skip = [] } = {}) {
+// into the city only to be hidden again, and identify for layers whose
+// individual features have to stay nameable after the merge.
+export function mergeWorldByLayer(root, { skip = [], identify = [] } = {}) {
   root.updateMatrixWorld(true)
   const rootInverse = root.matrixWorld.clone().invert()
   const toRoot = new THREE.Matrix4()
@@ -133,12 +158,24 @@ export function mergeWorldByLayer(root, { skip = [] } = {}) {
 
     let group = groups.get(key)
     if (!group) {
-      group = { layer, material, isLine, geometries: [], sources: [] }
+      group = {
+        layer,
+        material,
+        isLine,
+        geometries: [],
+        sources: [],
+        names: identify.includes(layer) ? [] : null,
+      }
       groups.set(key, group)
     }
 
     toRoot.multiplyMatrices(rootInverse, object.matrixWorld)
-    group.geometries.push(bakedGeometry(object, toRoot))
+    const geometry = bakedGeometry(object, toRoot)
+    if (group.names) {
+      tagFeature(geometry, group.names.length)
+      group.names.push(object.name)
+    }
+    group.geometries.push(geometry)
     group.sources.push(object)
   })
 

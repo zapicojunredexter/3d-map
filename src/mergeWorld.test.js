@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
+  FEATURE_ID,
   collidableMeshes,
+  featureAt,
   isCollidableLayer,
   layerFromName,
   layerOf,
@@ -106,6 +108,53 @@ describe('mergeWorldByLayer', () => {
 
     const [hit] = raycaster.intersectObject(merged, true)
     expect(hit?.point.y).toBeCloseTo(0.5)
+  })
+
+  it('names the feature a ray hits, even after merging', () => {
+    const material = new THREE.MeshStandardMaterial()
+    const root = new THREE.Group()
+    for (let index = 0; index < 4; index += 1) {
+      const mesh = boxAt(index * 10, 0, material)
+      mesh.name = `TPX_Buildings_${index}`
+      root.add(mesh)
+    }
+
+    const merged = mergeWorldByLayer(root, { identify: ['TPX_Buildings'] })
+    merged.updateMatrixWorld(true)
+    const buildings = merged.children[0]
+
+    expect(buildings.userData.featureNames).toHaveLength(4)
+    expect(buildings.geometry.getAttribute(FEATURE_ID)).toBeTruthy()
+
+    // Each block answers with its own name, from one merged mesh.
+    for (const [index, x] of [0, 10, 20, 30].entries()) {
+      const raycaster = new THREE.Raycaster(
+        new THREE.Vector3(x, 10, 0),
+        new THREE.Vector3(0, -1, 0),
+      )
+      const [hit] = raycaster.intersectObject(buildings, false)
+      expect(featureAt(hit)).toBe(`TPX_Buildings_${index}`)
+    }
+  })
+
+  it('leaves features unnamed unless the layer asked to be identified', () => {
+    const material = new THREE.MeshStandardMaterial()
+    const root = new THREE.Group()
+    const mesh = boxAt(0, 0, material)
+    mesh.name = 'TPX_Buildings_0'
+    root.add(mesh)
+
+    const merged = mergeWorldByLayer(root)
+    merged.updateMatrixWorld(true)
+    const raycaster = new THREE.Raycaster(
+      new THREE.Vector3(0, 10, 0),
+      new THREE.Vector3(0, -1, 0),
+    )
+
+    const [hit] = raycaster.intersectObject(merged.children[0], false)
+    expect(hit).toBeTruthy()
+    expect(featureAt(hit)).toBeNull()
+    expect(merged.children[0].geometry.getAttribute(FEATURE_ID)).toBeUndefined()
   })
 
   it('leaves out layers something else draws', () => {

@@ -165,6 +165,110 @@ kbd:nth-child(2) {
   transform: translate(-50%, -50%);
 }
 
+.style-picker {
+  position: fixed;
+  z-index: 4;
+  top: calc(clamp(24px, 4vw, 48px) + 124px);
+  right: clamp(18px, 4vw, 56px);
+  width: min(280px, calc(100vw - 36px));
+  padding: 12px 16px 14px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 5px;
+  color: #eef3e9;
+  background: rgb(10 18 16 / 72%);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 22%);
+  backdrop-filter: blur(14px);
+}
+
+.style-picker__label {
+  color: rgb(238 243 233 / 65%);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.style-picker__options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-top: 9px;
+}
+
+.style-picker__options button {
+  padding: 6px 2px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 3px;
+  color: rgb(238 243 233 / 70%);
+  background: rgb(255 255 255 / 6%);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.style-picker__options button:hover {
+  border-color: rgb(212 229 111 / 60%);
+  color: #fff;
+}
+
+.style-picker__options button[aria-pressed='true'] {
+  border-color: #d4e56f;
+  color: #0d1710;
+  background: #d4e56f;
+  font-weight: 500;
+}
+
+.feature-label {
+  position: fixed;
+  z-index: 3;
+  top: calc(50% + 24px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 12px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 4px;
+  color: #eef3e9;
+  background: rgb(10 18 16 / 78%);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.feature-label::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid rgb(255 255 255 / 18%);
+  border-left: 1px solid rgb(255 255 255 / 18%);
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.feature-label strong {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.feature-label span {
+  color: rgb(238 243 233 / 55%);
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+
 .loader,
 .model-error {
   display: flex;

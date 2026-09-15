@@ -18,15 +18,23 @@ import {
   spawnSearchOffsets,
 } from './player'
 import { calculateModelPlacement, isRoadSurface } from './world'
-import { collidableMeshes, mergeWorldByLayer, solidMeshes } from './mergeWorld'
+import {
+  collidableMeshes,
+  featureAt,
+  mergeWorldByLayer,
+  solidMeshes,
+} from './mergeWorld'
 import { applySurfaces } from './surfaces'
 import { canopyTest, treePlacements } from './treeInstances'
+import { DEFAULT_BUILDING_STYLE, applyBuildingStyle } from './buildingStyles'
 import { headingFromForward } from './minimapMath'
 import { currentDecimalHour } from './timeOfDay'
 import Minimap from './Minimap'
 import Trees from './Trees'
 import Atmosphere from './Atmosphere'
 import TimeAdjuster from './TimeAdjuster'
+import FeatureLabel from './FeatureLabel'
+import BuildingStylePicker from './BuildingStylePicker'
 import modelUrl from '../assets/topoexport_3D_modeling.glb?url'
 
 export const MODEL_URL = modelUrl
@@ -70,14 +78,24 @@ class ModelErrorBoundary extends Component {
   }
 }
 
-function WorldModel({ worldRef, collidersRef, solidsRef, canopyRef, placementRef }) {
+function WorldModel({
+  worldRef,
+  collidersRef,
+  solidsRef,
+  canopyRef,
+  placementRef,
+  buildingStyle,
+}) {
   const { scene } = useGLTF(MODEL_URL)
   const gl = useThree((state) => state.gl)
 
   const model = useMemo(() => {
     // The export's trees are trunk-and-blob placeholders. Trees draws a real
     // model at each of their positions instead, so they never reach the city.
-    const merged = mergeWorldByLayer(scene, { skip: ['TPX_Trees'] })
+    const merged = mergeWorldByLayer(scene, {
+      skip: ['TPX_Trees'],
+      identify: ['TPX_Buildings'],
+    })
     const placement = calculateModelPlacement(merged)
 
     for (const child of merged.children) {
@@ -104,6 +122,10 @@ function WorldModel({ worldRef, collidersRef, solidsRef, canopyRef, placementRef
     if (canopyRef) canopyRef.current = canopyTest(model.trees)
   }, [canopyRef, collidersRef, model, placementRef, solidsRef])
 
+  useEffect(() => {
+    applyBuildingStyle(model.object, buildingStyle)
+  }, [buildingStyle, model])
+
   return (
     <group ref={worldRef}>
       <Bvh firstHitOnly>
@@ -118,11 +140,18 @@ function WorldModel({ worldRef, collidersRef, solidsRef, canopyRef, placementRef
   )
 }
 
+// How far down the crosshair a building will still name itself, and how often
+// that ray is worth casting. Every frame would be wasted work for a label a
+// reader cannot follow that fast.
+const AIM_RANGE = 120
+const AIM_INTERVAL = 0.1
+
 function ExplorerControls({
   collidersRef,
   solidsRef,
   canopyRef,
   onLockedChange,
+  onAimChange,
   poseRef,
 }) {
   const { camera } = useThree()
@@ -137,6 +166,9 @@ function ExplorerControls({
     return next
   }, [])
   const forward = useMemo(() => new THREE.Vector3(), [])
+  const aim = useMemo(() => new THREE.Vector3(), [])
+  const aimedFeature = useRef(null)
+  const aimTimer = useRef(0)
   const right = useMemo(() => new THREE.Vector3(), [])
   const wish = useMemo(() => new THREE.Vector3(), [])
   const down = useMemo(() => new THREE.Vector3(0, -1, 0), [])
@@ -192,6 +224,19 @@ function ExplorerControls({
     raycaster.firstHitOnly = true
     raycaster.set(origin, up)
     return raycaster.intersectObjects(solids, false).length === 0
+  }
+
+  // Whatever the crosshair is resting on, named if that surface has an
+  // identity. Casting against every collider rather than just the buildings is
+  // what makes a wall in the way hide the building behind it.
+  const aimedAt = () => {
+    const colliders = collidersRef.current
+    if (!colliders) return null
+    camera.getWorldDirection(aim)
+    raycaster.far = AIM_RANGE
+    raycaster.firstHitOnly = true
+    raycaster.set(camera.position, aim)
+    return featureAt(raycaster.intersectObjects(colliders, false)[0])
   }
 
   // The topmost surface in a column has open sky, so a road there is walkable.
@@ -289,6 +334,19 @@ function ExplorerControls({
         heading: headingFromForward(forward.x, forward.z),
       }
     }
+
+    if (onAimChange) {
+      aimTimer.current += dt
+      if (aimTimer.current >= AIM_INTERVAL) {
+        aimTimer.current = 0
+        const found = aimedAt()
+        // Only on change, or this would re-render React every tick.
+        if (found !== aimedFeature.current) {
+          aimedFeature.current = found
+          onAimChange(found)
+        }
+      }
+    }
   })
 
   return (
@@ -300,7 +358,14 @@ function ExplorerControls({
   )
 }
 
-function Scene({ hour, onLockedChange, poseRef, placementRef }) {
+function Scene({
+  hour,
+  buildingStyle,
+  onLockedChange,
+  onAimChange,
+  poseRef,
+  placementRef,
+}) {
   const worldRef = useRef()
   const collidersRef = useRef(null)
   const solidsRef = useRef(null)
@@ -317,6 +382,7 @@ function Scene({ hour, onLockedChange, poseRef, placementRef }) {
             solidsRef={solidsRef}
             canopyRef={canopyRef}
             placementRef={placementRef}
+            buildingStyle={buildingStyle}
           />
           <Environment preset="park" />
         </Suspense>
@@ -326,6 +392,7 @@ function Scene({ hour, onLockedChange, poseRef, placementRef }) {
         solidsRef={solidsRef}
         canopyRef={canopyRef}
         onLockedChange={onLockedChange}
+        onAimChange={onAimChange}
         poseRef={poseRef}
       />
     </>
@@ -338,6 +405,8 @@ function Crosshair() {
 
 export default function App() {
   const [locked, setLocked] = useState(false)
+  const [aimedFeature, setAimedFeature] = useState(null)
+  const [buildingStyle, setBuildingStyle] = useState(DEFAULT_BUILDING_STYLE)
   const [hour, setHour] = useState(() => currentDecimalHour())
   const poseRef = useRef({ x: 0, z: 0, heading: 0 })
   const placementRef = useRef(null)
@@ -357,7 +426,9 @@ export default function App() {
       >
         <Scene
           hour={hour}
+          buildingStyle={buildingStyle}
           onLockedChange={setLocked}
+          onAimChange={setAimedFeature}
           poseRef={poseRef}
           placementRef={placementRef}
         />
@@ -393,8 +464,13 @@ export default function App() {
       </aside>
 
       <TimeAdjuster hour={hour} onChange={setHour} />
+      <BuildingStylePicker
+        styleId={buildingStyle}
+        onChange={setBuildingStyle}
+      />
       <Minimap poseRef={poseRef} placementRef={placementRef} />
       {locked && <Crosshair />}
+      {locked && <FeatureLabel id={aimedFeature} />}
       <div className="vignette" aria-hidden="true" />
     </main>
   )
