@@ -12,8 +12,19 @@ import ver10 from '../assets/houses/house-ver10.glb?url'
 import ver11 from '../assets/houses/house-ver11.glb?url'
 import mill1 from '../assets/houses/mill-ver1-base.glb?url'
 import mill2 from '../assets/houses/mill-ver2-base.glb?url'
+import millWind from '../assets/houses/mill-wind.glb?url'
+import shelter from '../assets/houses/shelter.glb?url'
+import hillTree from '../assets/houses/hill-tree.glb?url'
 
 export const HOUSE_CATALOG = [
+  {
+    id: 'shelter',
+    url: shelter,
+    // Tiny open shed — for the smallest footprints.
+    native: { x: 3.85, y: 3.43, z: 3.5 },
+    size: 'small',
+    shape: 'square',
+  },
   {
     id: 'ver1-small',
     url: ver1,
@@ -95,9 +106,29 @@ export const HOUSE_CATALOG = [
     size: 'medium',
     shape: 'square',
   },
+  {
+    id: 'mill-wind',
+    url: millWind,
+    // Landmark only: reserved for the tallest plots in the city.
+    native: { x: 11.28, y: 9.75, z: 15.33 },
+    size: 'large',
+    shape: 'wide',
+  },
+  {
+    id: 'hill-tree',
+    url: hillTree,
+    // Tall landmark mass for big or high plots.
+    native: { x: 13.56, y: 16.48, z: 8.41 },
+    size: 'large',
+    shape: 'wide',
+  },
 ]
 
 export const HOUSE_MODEL_URLS = HOUSE_CATALOG.map((entry) => entry.url)
+
+// Windmills are landmarks, not stock housing — only this many appear citywide.
+export const WINDMILL_ID = 'mill-wind'
+export const WINDMILL_COUNT = 2
 
 function plotProfile(plot) {
   const area = plot.width * plot.depth
@@ -122,20 +153,20 @@ function plotProfile(plot) {
 function poolFor(profile) {
   if (profile.tall) {
     return profile.size === 'large'
-      ? ['ver10', 'ver11', 'ver6-large', 'ver9-large']
-      : ['ver6-large', 'ver9-large', 'mill1', 'ver8-mid']
+      ? ['hill-tree', 'ver10', 'ver11', 'ver6-large', 'ver9-large']
+      : ['hill-tree', 'ver6-large', 'ver9-large', 'mill1', 'ver8-mid']
   }
 
   if (profile.size === 'small') {
     return profile.square
-      ? ['ver1-small', 'ver2-small', 'ver8-small']
-      : ['ver5-small', 'ver8-small', 'ver1-small']
+      ? ['shelter', 'ver1-small', 'ver2-small', 'ver8-small']
+      : ['shelter', 'ver5-small', 'ver8-small', 'ver1-small']
   }
 
   if (profile.size === 'large') {
     return profile.square
-      ? ['ver10', 'ver11', 'mill1', 'mill2']
-      : ['ver10', 'ver11', 'ver8-mid', 'mill2']
+      ? ['ver10', 'ver11', 'mill1', 'mill2', 'hill-tree']
+      : ['ver10', 'ver11', 'hill-tree', 'ver8-mid', 'mill2']
   }
 
   // medium
@@ -155,13 +186,14 @@ function modelFootprint(entry) {
 
 // Seeded pick: prefer catalog entries whose native footprint and height already
 // sit near the plot, then break ties randomly so a street is not one clone.
+// Windmills are excluded here — assignHouseModels places those separately.
 export function pickHouseModel(plot, catalog = HOUSE_CATALOG, random = Math.random) {
   const profile = plotProfile(plot)
   const poolIds = poolFor(profile)
   const pool = poolIds
     .map((id) => catalog.find((entry) => entry.id === id))
     .filter(Boolean)
-  const candidates = pool.length ? pool : catalog
+  const candidates = pool.length ? pool : catalog.filter((entry) => entry.id !== WINDMILL_ID)
 
   let best = candidates[0]
   let bestScore = Infinity
@@ -184,4 +216,20 @@ export function pickHouseModel(plot, catalog = HOUSE_CATALOG, random = Math.rand
   }
 
   return best
+}
+
+// Tallest blocks by survey height, then footprint area, then slot for stability.
+export function windmillPlots(
+  placements,
+  count = WINDMILL_COUNT,
+) {
+  return [...placements]
+    .sort((a, b) => {
+      if (b.height !== a.height) return b.height - a.height
+      const areaA = a.width * a.depth
+      const areaB = b.width * b.depth
+      if (areaB !== areaA) return areaB - areaA
+      return (a.slot ?? 0) - (b.slot ?? 0)
+    })
+    .slice(0, count)
 }

@@ -7,7 +7,7 @@ import {
 import { FEATURE_ID } from './mergeWorld'
 import { createRandom } from './surfaces'
 import { chunkPlacements, placementMatrix } from './treeInstances'
-import { HOUSE_CATALOG, pickHouseModel } from './houseCatalog'
+import { HOUSE_CATALOG, WINDMILL_ID, pickHouseModel, windmillPlots } from './houseCatalog'
 
 // The export's buildings are white extrusions, but they are correctly placed
 // and sized, so they work as plots: house models are chosen per footprint and
@@ -201,18 +201,32 @@ export function assignHouseModels(
 ) {
   const byId = new Map(models.map((model) => [model.id, model]))
   const grouped = new Map()
+  const windmill = byId.get(WINDMILL_ID)
+  const windmillSlots = new Set(
+    windmill ? windmillPlots(placements).map((plot) => plot.slot) : [],
+  )
+
+  const push = (model, placement) => {
+    let list = grouped.get(model.id)
+    if (!list) {
+      list = []
+      grouped.set(model.id, list)
+    }
+    list.push(placement)
+  }
 
   for (const placement of placements) {
+    if (windmill && windmillSlots.has(placement.slot)) {
+      push(windmill, placement)
+      continue
+    }
+
     const pick =
       models.length === 1
         ? models[0]
         : byId.get(pickHouseModel(placement, catalog, random).id) ?? models[0]
-    let list = grouped.get(pick.id)
-    if (!list) {
-      list = []
-      grouped.set(pick.id, list)
-    }
-    list.push(placement)
+    // Never fall back onto the landmark windmill for ordinary plots.
+    push(pick.id === WINDMILL_ID ? models.find((m) => m.id !== WINDMILL_ID) ?? pick : pick, placement)
   }
 
   return grouped
