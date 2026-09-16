@@ -57,14 +57,14 @@ function drawTrees(ctx, trees) {
 function drawPlayer(ctx) {
   ctx.beginPath()
   ctx.moveTo(SIZE / 2, SIZE / 2 - 18)
-  ctx.lineTo(SIZE / 2 - 5, SIZE / 2 + 8)
+  ctx.lineTo(SIZE / 2 - 8, SIZE / 2 + 3)
   ctx.lineTo(SIZE / 2, SIZE / 2 + 2)
-  ctx.lineTo(SIZE / 2 + 5, SIZE / 2 + 8)
+  ctx.lineTo(SIZE / 2 + 8, SIZE / 2 + 3)
   ctx.closePath()
   ctx.fillStyle = '#5ad0ff'
   ctx.fill()
   ctx.strokeStyle = '#041018'
-  ctx.lineWidth = 1.2
+  ctx.lineWidth = 0.5
   ctx.lineJoin = 'round'
   ctx.stroke()
 }
