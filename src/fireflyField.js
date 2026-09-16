@@ -6,8 +6,8 @@ export const FIREFLY_RADIUS = 48
 export const FIREFLY_HEIGHT_MIN = 0.35
 export const FIREFLY_HEIGHT_MAX = 7.5
 export const FIREFLY_SIZE = 0.25
-// orange: #FF9F1C green: #e8ff9a
-export const FIREFLY_COLOR = '#FFAA00'
+// orange: #FF9F1C green: #e8ff9a blue: #A2E8DD neon green: #4DE64D golden amber: #FFB347
+export const FIREFLY_COLOR = '#FFB347'
 export const FIREFLY_GLOW_SIZE = 64
 // Dim floor so bugs never vanish mid-pulse (relative brightness).
 export const FIREFLY_PULSE_MIN = 0.28
@@ -17,7 +17,7 @@ export const FIREFLY_PULSE_SPEED_MAX = 2.4
 
 // A few real point lights ride nearby bugs so grass/walls pick up their glow
 // (hundreds of PointLights would melt the GPU).
-export const FIREFLY_LIGHT_COUNT = FIREFLY_COUNT * 0.01
+export const FIREFLY_LIGHT_COUNT = FIREFLY_COUNT * 0
 export const FIREFLY_LIGHT_BRIGHTNESS = 20
 export const FIREFLY_LIGHT_DISTANCE = 14
 export const FIREFLY_LIGHT_DECAY = 2
