@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Stars } from '@react-three/drei'
 import * as THREE from 'three'
+import { useEffect, useMemo, useRef } from 'react'
 import { atmosphereAt } from './timeOfDay'
+import PlayerTorch from './PlayerTorch'
 
 const vertexShader = `
   varying vec3 vDirection;
@@ -52,9 +53,12 @@ export default function Atmosphere({ hour }) {
   )
 
   useEffect(() => {
-    gl.toneMappingExposure = mood.exposure
+    // A little extra exposure at night so the torch pool isn’t crushed by the
+    // dark grade.
+    const torchBoost = mood.lanternIntensity > 0.02 ? 0.22 : 0
+    gl.toneMappingExposure = mood.exposure + torchBoost
     scene.environmentIntensity = mood.environmentIntensity
-  }, [gl, mood.environmentIntensity, mood.exposure, scene])
+  }, [gl, mood, scene])
 
   useFrame(() => {
     if (skyRef.current) skyRef.current.position.copy(camera.position)
@@ -109,6 +113,12 @@ export default function Atmosphere({ hour }) {
         shadow-camera-right={160}
         shadow-camera-top={160}
         shadow-camera-bottom={-160}
+      />
+
+      <PlayerTorch
+        active={mood.lanternIntensity > 0.02}
+        strength={mood.lanternIntensity}
+        color={mood.lanternColor}
       />
     </>
   )

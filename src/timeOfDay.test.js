@@ -58,4 +58,12 @@ describe('atmosphereAt', () => {
     expect(Math.abs(before.exposure - after.exposure)).toBeLessThan(0.01)
     expect(Math.abs(before.stars - after.stars)).toBeLessThan(0.01)
   })
+
+  it('turns on the personal lantern at night', () => {
+    const midnight = atmosphereAt(0)
+    const midday = atmosphereAt(12)
+
+    expect(midnight.lanternIntensity).toBeGreaterThan(1)
+    expect(midday.lanternIntensity).toBe(0)
+  })
 })

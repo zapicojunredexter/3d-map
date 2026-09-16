@@ -40,8 +40,8 @@ import Houses from './Houses'
 import Animals from './Animals'
 import { buildingPlacements } from './houseInstances'
 import { animalPlacements } from './animalInstances'
-import { headingFromForward } from './minimapMath'
 import { currentDecimalHour } from './timeOfDay'
+import { headingFromForward } from './minimapMath'
 import Minimap from './Minimap'
 import Atmosphere from './Atmosphere'
 import FeatureLabel from './FeatureLabel'
@@ -453,7 +453,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aimedFeature, setAimedFeature] = useState(null)
   const [buildingStyle, setBuildingStyle] = useState(DEFAULT_BUILDING_STYLE)
-  const [hour, setHour] = useState(() => 8)
+  const [hour, setHour] = useState(() => currentDecimalHour())
   const hasEnteredRef = useRef(false)
   const poseRef = useRef({ x: 0, z: 0, heading: 0 })
   const placementRef = useRef(null)

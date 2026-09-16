@@ -187,6 +187,9 @@ export function atmosphereAt(hour) {
   const daylight = Math.max(0, Math.sin(solarAngle))
   const azimuth = ((normalized - 6) / 24) * Math.PI * 2
   const radius = 300
+  const stars = mix(start.stars, end.stars, amount)
+  // Personal light aura — fades in with night the same way the stars do.
+  const nightAura = Math.min(1, Math.max(0, (stars - 0.08) / 0.72))
 
   return {
     name: amount < 0.5 ? start.name : end.name,
@@ -199,12 +202,14 @@ export function atmosphereAt(hour) {
     sunIntensity: mix(start.sunIntensity, end.sunIntensity, amount),
     ambientIntensity: mix(start.ambientIntensity, end.ambientIntensity, amount),
     exposure: mix(start.exposure, end.exposure, amount),
-    stars: mix(start.stars, end.stars, amount),
+    stars,
     environmentIntensity: mix(
       start.environmentIntensity,
       end.environmentIntensity,
       amount,
     ),
+    lanternIntensity: nightAura * 1.35,
+    lanternColor: '#ff8f3d',
     sunPosition: [
       Math.cos(azimuth) * radius,
       Math.max(12, daylight * radius),

@@ -350,6 +350,14 @@ export const CREDIT_SECTIONS = [
       'Additional Sketchfab downloads in assets/. CC BY-NC means non-commercial use only — fine for a personal portfolio, not for paid products without a separate license.',
     entries: [
       sketchfab(
+        'Torch',
+        'acdiorr',
+        'https://sketchfab.com/acdiorr',
+        'https://sketchfab.com/3d-models/torch-65941ee0697e487bb7780d2ec60a2836',
+        CC_BY_4,
+        true,
+      ),
+      sketchfab(
         'Grass 02',
         'Digital screen official',
         'https://sketchfab.com/ck212575',
