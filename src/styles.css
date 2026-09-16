@@ -177,7 +177,7 @@ kbd:nth-child(2) {
 }
 
 .settings-panel {
-  width: min(430px, 100%);
+  width: min(460px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
   padding: 22px;
@@ -186,6 +186,12 @@ kbd:nth-child(2) {
   color: #eef3e9;
   background: rgb(10 18 16 / 94%);
   box-shadow: 0 28px 90px rgb(0 0 0 / 50%);
+}
+
+.settings-panel > .time-adjuster,
+.settings-panel > .style-picker,
+.settings-panel > .credits-section {
+  margin-top: 10px;
 }
 
 .settings-panel__heading {
@@ -229,6 +235,189 @@ kbd:nth-child(2) {
 
 .settings-panel__resume:hover {
   background: #e4f28c;
+}
+
+.credits-section {
+  width: 100%;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 5px;
+  color: #eef3e9;
+  background: rgb(255 255 255 / 4%);
+}
+
+.credits-section__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.credits-section__bar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.credits-section__bar span {
+  color: rgb(238 243 233 / 65%);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.credits-section__bar strong {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.credits-section__toggle {
+  flex: none;
+  padding: 6px 10px;
+  border: 1px solid rgb(212 229 111 / 55%);
+  border-radius: 3px;
+  color: #d4e56f;
+  background: transparent;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.credits-section__toggle:hover {
+  border-color: #d4e56f;
+  color: #fff;
+}
+
+.credits-section__panel {
+  max-height: min(42vh, 360px);
+  overflow: auto;
+  padding: 0 16px 14px;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.credits-section__intro,
+.credits-group__blurb,
+.credits-entry__note {
+  margin: 0;
+  color: rgb(238 243 233 / 68%);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.credits-section__intro {
+  margin-top: 12px;
+}
+
+.credits-section__count {
+  margin: 8px 0 0;
+  color: rgb(212 229 111 / 80%);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.credits-group {
+  margin-top: 14px;
+}
+
+.credits-group h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.credits-group ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credits-entry + .credits-entry {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+.credits-entry__title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.credits-entry__sketchfab {
+  margin: 0;
+  color: #eef3e9;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.credits-entry__sketchfab .credits-entry__badge {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.credits-entry__plain {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+.credits-entry__title a,
+.credits-entry__meta a,
+.credits-entry__sketchfab a {
+  color: #eef3e9;
+  text-decoration: underline;
+  text-decoration-color: rgb(212 229 111 / 45%);
+  text-underline-offset: 2px;
+}
+
+.credits-entry__title a:hover,
+.credits-entry__meta a:hover,
+.credits-entry__sketchfab a:hover {
+  color: #d4e56f;
+}
+
+.credits-entry__badge {
+  padding: 1px 5px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  color: rgb(238 243 233 / 70%);
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.credits-entry__badge--warn {
+  border-color: rgb(232 176 94 / 55%);
+  color: #e8b05e;
+}
+
+.credits-entry__meta {
+  margin: 3px 0 0;
+  color: rgb(238 243 233 / 62%);
+  font-size: 11px;
+}
+
+.credits-entry__note {
+  margin-top: 4px;
 }
 
 .style-picker {

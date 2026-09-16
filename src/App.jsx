@@ -495,8 +495,8 @@ export default function App() {
       </Canvas>
 
       <header className="brand">
-        <span className="eyebrow">TopoExport / Field view</span>
-        <h1>Terrain Explorer</h1>
+        <span className="eyebrow">Interactive 3D Geospatial Explorer</span>
+        <h1>GeoScape</h1>
       </header>
 
       {!locked && !settingsOpen && (

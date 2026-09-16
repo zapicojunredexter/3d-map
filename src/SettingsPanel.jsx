@@ -1,5 +1,6 @@
 import BuildingStylePicker from './BuildingStylePicker'
 import TimeAdjuster from './TimeAdjuster'
+import CreditsSection from './CreditsSection'
 
 export default function SettingsPanel({
   hour,
@@ -29,6 +30,7 @@ export default function SettingsPanel({
           styleId={buildingStyle}
           onChange={onBuildingStyleChange}
         />
+        <CreditsSection />
 
         <button className="settings-panel__resume" type="button" onClick={onResume}>
           Resume exploring
