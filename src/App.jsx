@@ -520,7 +520,8 @@ export default function App() {
         <div>
           <strong>Move</strong>
           <span>
-            Mouse look · Shift sprint · Space jump · R reset · Esc pause/settings
+            Mouse look · Shift sprint · Space jump · R reset · F torch
+            (night) · Esc pause/settings
           </span>
         </div>
       </aside>

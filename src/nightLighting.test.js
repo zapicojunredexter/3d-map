@@ -6,7 +6,9 @@ import {
   TORCH_FILL_BRIGHTNESS,
   TORCH_MODEL_HEIGHT,
   TORCH_OFFSET,
+  canUseTorch,
   torchFlicker,
+  torchIsLit,
 } from './nightLighting'
 import { prepareTorchModel } from './PlayerTorch'
 
@@ -23,6 +25,14 @@ describe('nightLighting', () => {
     expect(Math.min(...samples)).toBeGreaterThan(0.7)
     expect(Math.max(...samples)).toBeLessThan(1.05)
     expect(new Set(samples.map((v) => v.toFixed(3))).size).toBeGreaterThan(1)
+  })
+
+  it('only lights the torch at night when the player leaves it on', () => {
+    expect(canUseTorch(0)).toBe(false)
+    expect(canUseTorch(1.2)).toBe(true)
+    expect(torchIsLit(1.2, true)).toBe(true)
+    expect(torchIsLit(1.2, false)).toBe(false)
+    expect(torchIsLit(0, true)).toBe(false)
   })
 })
 

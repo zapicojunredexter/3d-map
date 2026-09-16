@@ -29,3 +29,14 @@ export function torchFlicker(timeSeconds) {
     0.2 * Math.sin(timeSeconds * 45.8 + 0.6)
   return 0.78 + 0.22 * (0.5 + 0.5 * wave)
 }
+
+// Night mood drives availability; the player toggles the flame with F.
+export const TORCH_ACTIVE_THRESHOLD = 0.02
+
+export function canUseTorch(lanternIntensity) {
+  return lanternIntensity > TORCH_ACTIVE_THRESHOLD
+}
+
+export function torchIsLit(lanternIntensity, torchEnabled) {
+  return canUseTorch(lanternIntensity) && Boolean(torchEnabled)
+}

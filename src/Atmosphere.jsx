@@ -1,9 +1,11 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { Stars } from '@react-three/drei'
 import * as THREE from 'three'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { atmosphereAt } from './timeOfDay'
+import { canUseTorch, torchIsLit } from './nightLighting'
 import PlayerTorch from './PlayerTorch'
+import Fireflies from './Fireflies'
 
 const vertexShader = `
   varying vec3 vDirection;
@@ -39,7 +41,9 @@ const fragmentShader = `
 export default function Atmosphere({ hour }) {
   const skyRef = useRef()
   const { camera, gl, scene } = useThree()
+  const [torchEnabled, setTorchEnabled] = useState(true)
   const mood = useMemo(() => atmosphereAt(hour), [hour])
+  const torchLit = torchIsLit(mood.lanternIntensity, torchEnabled)
   const uniforms = useMemo(
     () => ({
       topColor: { value: new THREE.Color(mood.top) },
@@ -53,12 +57,25 @@ export default function Atmosphere({ hour }) {
   )
 
   useEffect(() => {
-    // A little extra exposure at night so the torch pool isn’t crushed by the
-    // dark grade.
-    const torchBoost = mood.lanternIntensity > 0.02 ? 0.22 : 0
+    const onKeyDown = (event) => {
+      if (event.code !== 'KeyF' || event.repeat) return
+      if (event.target?.closest?.('input, textarea, select, [contenteditable]')) {
+        return
+      }
+      if (!canUseTorch(mood.lanternIntensity)) return
+      event.preventDefault()
+      setTorchEnabled((on) => !on)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mood.lanternIntensity])
+
+  useEffect(() => {
+    // Extra exposure only while the hand torch is actually lit.
+    const torchBoost = torchLit ? 0.22 : 0
     gl.toneMappingExposure = mood.exposure + torchBoost
     scene.environmentIntensity = mood.environmentIntensity
-  }, [gl, mood, scene])
+  }, [gl, mood, scene, torchLit])
 
   useFrame(() => {
     if (skyRef.current) skyRef.current.position.copy(camera.position)
@@ -116,10 +133,11 @@ export default function Atmosphere({ hour }) {
       />
 
       <PlayerTorch
-        active={mood.lanternIntensity > 0.02}
+        active={torchLit}
         strength={mood.lanternIntensity}
         color={mood.lanternColor}
       />
+      <Fireflies strength={mood.lanternIntensity} />
     </>
   )
 }
