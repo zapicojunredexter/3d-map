@@ -181,15 +181,21 @@ export function atmosphereAt(hour) {
   const start = STOPS[Math.max(0, endIndex - 1)]
   const amount = (normalized - start.hour) / (end.hour - start.hour || 1)
 
-  // Sunrise is east, noon is high overhead, sunset is west. At night the
-  // directional light becomes a low moon-like fill rather than disappearing.
+  // Sunrise is east, noon is high overhead, sunset is west. The moon rides
+  // the opposite arc so midnight puts it high and daylight hides it.
   const solarAngle = ((normalized - 6) / 12) * Math.PI
   const daylight = Math.max(0, Math.sin(solarAngle))
+  const moonlight = Math.max(0, -Math.sin(solarAngle))
   const azimuth = ((normalized - 6) / 24) * Math.PI * 2
+  const moonAzimuth = azimuth + Math.PI
   const radius = 300
   const stars = mix(start.stars, end.stars, amount)
   // Personal light aura — fades in with night the same way the stars do.
   const nightAura = Math.min(1, Math.max(0, (stars - 0.08) / 0.72))
+  // Soft cool fill once the moon clears the horizon (peaks near midnight).
+  const moonAmount = Math.min(1, moonlight * 1.15)
+  // adjust this to change sky brightness during night
+  const moonLift = moonAmount * 0.18
 
   return {
     name: amount < 0.5 ? start.name : end.name,
@@ -200,20 +206,28 @@ export function atmosphereAt(hour) {
     ambient: mixColor(start.ambient, end.ambient, amount),
     ground: mixColor(start.ground, end.ground, amount),
     sunIntensity: mix(start.sunIntensity, end.sunIntensity, amount),
-    ambientIntensity: mix(start.ambientIntensity, end.ambientIntensity, amount),
-    exposure: mix(start.exposure, end.exposure, amount),
+    ambientIntensity:
+      mix(start.ambientIntensity, end.ambientIntensity, amount) + moonLift,
+    exposure: mix(start.exposure, end.exposure, amount) + moonLift * 0.7,
     stars,
-    environmentIntensity: mix(
-      start.environmentIntensity,
-      end.environmentIntensity,
-      amount,
-    ),
+    environmentIntensity:
+      mix(start.environmentIntensity, end.environmentIntensity, amount) +
+      moonAmount * 0.06,
     lanternIntensity: nightAura * 1.35,
     lanternColor: '#ff8f3d',
     sunPosition: [
       Math.cos(azimuth) * radius,
       Math.max(12, daylight * radius),
       Math.sin(azimuth) * radius,
+    ],
+    moonColor: '#c9d7f0',
+    // adjust these values to change 3d space brightness during night
+    moonIntensity: moonAmount * 0.55,
+    moonAmount,
+    moonPosition: [
+      Math.cos(moonAzimuth) * radius,
+      Math.max(10, moonlight * radius * 0.92),
+      Math.sin(moonAzimuth) * radius,
     ],
   }
 }

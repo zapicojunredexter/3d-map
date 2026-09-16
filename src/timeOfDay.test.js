@@ -66,4 +66,16 @@ describe('atmosphereAt', () => {
     expect(midnight.lanternIntensity).toBeGreaterThan(1)
     expect(midday.lanternIntensity).toBe(0)
   })
+
+  it('puts a cool moon high at midnight and hides it at noon', () => {
+    const midnight = atmosphereAt(0)
+    const midday = atmosphereAt(12)
+
+    expect(midnight.moonAmount).toBeGreaterThan(0.85)
+    expect(midnight.moonIntensity).toBeGreaterThan(0.4)
+    expect(midnight.moonPosition[1]).toBeGreaterThan(200)
+    expect(midday.moonAmount).toBe(0)
+    expect(midday.moonIntensity).toBe(0)
+    expect(midday.exposure).toBeGreaterThan(midnight.exposure)
+  })
 })

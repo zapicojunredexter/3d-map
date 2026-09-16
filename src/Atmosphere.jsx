@@ -21,6 +21,9 @@ const fragmentShader = `
   uniform vec3 horizonColor;
   uniform vec3 sunColor;
   uniform vec3 sunDirection;
+  uniform vec3 moonColor;
+  uniform vec3 moonDirection;
+  uniform float moonAmount;
   varying vec3 vDirection;
 
   void main() {
@@ -31,6 +34,10 @@ const fragmentShader = `
     float sunCore = pow(max(dot(direction, sunDirection), 0.0), 700.0);
     float sunGlow = pow(max(dot(direction, sunDirection), 0.0), 24.0);
     color += sunColor * (sunCore * 1.2 + sunGlow * 0.16);
+
+    float moonCore = pow(max(dot(direction, moonDirection), 0.0), 420.0);
+    float moonGlow = pow(max(dot(direction, moonDirection), 0.0), 14.0);
+    color += moonColor * moonAmount * (moonCore * 1.05 + moonGlow * 0.22);
 
     gl_FragColor = vec4(color, 1.0);
     #include <tonemapping_fragment>
@@ -52,6 +59,11 @@ export default function Atmosphere({ hour }) {
       sunDirection: {
         value: new THREE.Vector3(...mood.sunPosition).normalize(),
       },
+      moonColor: { value: new THREE.Color(mood.moonColor) },
+      moonDirection: {
+        value: new THREE.Vector3(...mood.moonPosition).normalize(),
+      },
+      moonAmount: { value: mood.moonAmount },
     }),
     [mood],
   )
@@ -131,6 +143,14 @@ export default function Atmosphere({ hour }) {
         shadow-camera-top={160}
         shadow-camera-bottom={-160}
       />
+      {mood.moonAmount > 0.02 && (
+        <directionalLight
+          color={mood.moonColor}
+          intensity={mood.moonIntensity}
+          position={mood.moonPosition}
+          castShadow={false}
+        />
+      )}
 
       <PlayerTorch
         active={torchLit}
