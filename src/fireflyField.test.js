@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  FIREFLY_COLOR,
+  FIREFLY_COLORS,
   FIREFLY_COUNT,
   FIREFLY_LIGHT_BRIGHTNESS,
   FIREFLY_LIGHT_COUNT,
@@ -7,9 +9,11 @@ import {
   applyFireflyPulseShader,
   createFireflyField,
   createFireflyGlowTexture,
+  fireflyColorAt,
   fireflyLightIndices,
   fireflyLightIntensity,
   fireflyPulse,
+  parseFireflyPalette,
 } from './fireflyField'
 
 describe('createFireflyField', () => {
@@ -76,9 +80,9 @@ describe('applyFireflyPulseShader', () => {
 
 describe('firefly lights', () => {
   it('spreads light hosts across the cloud', () => {
-    const indices = fireflyLightIndices(100, FIREFLY_LIGHT_COUNT)
-    expect(indices).toHaveLength(FIREFLY_LIGHT_COUNT)
-    expect(new Set(indices).size).toBe(FIREFLY_LIGHT_COUNT)
+    const indices = fireflyLightIndices(100, Math.max(1, FIREFLY_LIGHT_COUNT || 6))
+    expect(indices.length).toBeGreaterThan(0)
+    expect(new Set(indices).size).toBe(indices.length)
     expect(Math.min(...indices)).toBeGreaterThanOrEqual(0)
     expect(Math.max(...indices)).toBeLessThan(100)
   })
@@ -89,5 +93,22 @@ describe('firefly lights', () => {
     expect(fireflyLightIntensity(0.5, 0.5)).toBeCloseTo(
       FIREFLY_LIGHT_BRIGHTNESS * 0.25,
     )
+  })
+})
+
+describe('firefly colors', () => {
+  it('exposes an editable palette', () => {
+    expect(FIREFLY_COLORS.length).toBeGreaterThan(1)
+    expect(FIREFLY_COLOR).toBe(FIREFLY_COLORS[0])
+  })
+
+  it('lerps between palette entries over time', () => {
+    const palette = parseFireflyPalette(['#ff0000', '#0000ff'])
+    const a = fireflyColorAt(0, 0, palette, 1)
+    const b = fireflyColorAt(0.5, 0, palette, 1)
+    expect(a[0]).toBeGreaterThan(0.9)
+    expect(a[2]).toBeLessThan(0.1)
+    expect(b[0]).toBeLessThan(0.1)
+    expect(b[2]).toBeGreaterThan(0.9)
   })
 })

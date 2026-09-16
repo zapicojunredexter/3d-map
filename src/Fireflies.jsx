@@ -2,9 +2,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
-  FIREFLY_COLOR,
   FIREFLY_COUNT,
-  FIREFLY_LIGHT_COLOR,
   FIREFLY_LIGHT_COUNT,
   FIREFLY_LIGHT_DECAY,
   FIREFLY_LIGHT_DISTANCE,
@@ -12,24 +10,32 @@ import {
   applyFireflyPulseShader,
   createFireflyField,
   createFireflyGlowTexture,
+  fireflyColorAt,
   fireflyLightIndices,
   fireflyLightIntensity,
   fireflyPulse,
+  parseFireflyPalette,
 } from './fireflyField'
 
 // Additive dots plus a handful of real point lights so nearby ground glows.
 export default function Fireflies({ strength = 0 }) {
   const points = useRef()
   const lightRefs = useRef([])
+  const colorScratch = useRef([1, 1, 1])
   const { camera } = useThree()
   const field = useMemo(() => createFireflyField(FIREFLY_COUNT), [])
   const homes = useMemo(() => field.positions.slice(), [field])
+  const palette = useMemo(() => parseFireflyPalette(), [])
   const lightHosts = useMemo(
     () => fireflyLightIndices(field.count, FIREFLY_LIGHT_COUNT),
     [field],
   )
   const glowMap = useMemo(() => createFireflyGlowTexture(), [])
   const pulseAttr = useMemo(() => new Float32Array(field.count).fill(1), [field])
+  const colorAttr = useMemo(
+    () => new Float32Array(field.count * 3).fill(1),
+    [field],
+  )
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()
     geo.setAttribute(
@@ -37,11 +43,12 @@ export default function Fireflies({ strength = 0 }) {
       new THREE.BufferAttribute(field.positions.slice(), 3),
     )
     geo.setAttribute('aPulse', new THREE.BufferAttribute(pulseAttr, 1))
+    geo.setAttribute('color', new THREE.BufferAttribute(colorAttr, 3))
     return geo
-  }, [field, pulseAttr])
+  }, [field, pulseAttr, colorAttr])
   const material = useMemo(() => {
     const mat = new THREE.PointsMaterial({
-      color: FIREFLY_COLOR,
+      color: '#ffffff',
       map: glowMap,
       alphaMap: glowMap,
       size: FIREFLY_SIZE,
@@ -50,6 +57,7 @@ export default function Fireflies({ strength = 0 }) {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       toneMapped: false,
+      vertexColors: true,
       opacity: 0,
     })
     return applyFireflyPulseShader(mat)
@@ -70,11 +78,13 @@ export default function Fireflies({ strength = 0 }) {
     material.opacity = Math.min(1, strength)
     const positions = geometry.attributes.position.array
     const pulses = geometry.attributes.aPulse.array
+    const colors = geometry.attributes.color.array
     const { phases, count, radius, heightMin, heightMax } = field
     const cx = camera.position.x
     const cy = camera.position.y
     const cz = camera.position.z
     const radiusSq = radius * radius
+    const rgb = colorScratch.current
 
     for (let i = 0; i < count; i += 1) {
       const i3 = i * 3
@@ -118,6 +128,11 @@ export default function Fireflies({ strength = 0 }) {
       const glow = fireflyPulse(time, phase, pulseSpeed)
       pulses[i] = glow
 
+      fireflyColorAt(time, phase, palette, undefined, rgb)
+      colors[i3] = rgb[0]
+      colors[i3 + 1] = rgb[1]
+      colors[i3 + 2] = rgb[2]
+
       // Gentle drift; glow pulse does the breathing, not fast position jitter.
       const sway = 0.9 + 0.1 * Math.sin(time * twinkle + phase)
       positions[i3] = hx + Math.cos(time * speed + phase) * 0.55 * sway
@@ -128,6 +143,7 @@ export default function Fireflies({ strength = 0 }) {
 
     geometry.attributes.position.needsUpdate = true
     geometry.attributes.aPulse.needsUpdate = true
+    geometry.attributes.color.needsUpdate = true
 
     // Ride a few bugs with real lights so foliage/ground catch the pulse.
     for (let L = 0; L < lightHosts.length; L += 1) {
@@ -137,6 +153,7 @@ export default function Fireflies({ strength = 0 }) {
       const i3 = i * 3
       light.position.set(positions[i3], positions[i3 + 1], positions[i3 + 2])
       light.intensity = fireflyLightIntensity(strength, pulses[i])
+      light.color.setRGB(colors[i3], colors[i3 + 1], colors[i3 + 2])
     }
   })
 
@@ -154,7 +171,7 @@ export default function Fireflies({ strength = 0 }) {
           ref={(node) => {
             lightRefs.current[i] = node
           }}
-          color={FIREFLY_LIGHT_COLOR}
+          color="#ffffff"
           intensity={0}
           distance={FIREFLY_LIGHT_DISTANCE}
           decay={FIREFLY_LIGHT_DECAY}

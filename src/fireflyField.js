@@ -3,11 +3,27 @@ import * as THREE from 'three'
 
 export const FIREFLY_COUNT = 1000
 export const FIREFLY_RADIUS = 48
-export const FIREFLY_HEIGHT_MIN = 0.35
-export const FIREFLY_HEIGHT_MAX = 7.5
+export const FIREFLY_HEIGHT_MIN = 0.05
+export const FIREFLY_HEIGHT_MAX = 10
 export const FIREFLY_SIZE = 0.25
-// orange: #FF9F1C green: #e8ff9a blue: #A2E8DD neon green: #4DE64D golden amber: #FFB347
-export const FIREFLY_COLOR = '#FFB347'
+// Edit this list — each bug slowly lerps through the palette.
+export const FIREFLY_COLORS = [
+  '#FFE066', // Bright Canary
+  '#FFC033', // Warm Marigold
+  '#FFA420', // Vibrant Amber
+  '#FF8811', // Fiery Coral
+  '#E67300' // Deep Ochre
+
+  // 'yellow',
+  // '#FF9F1C', // orange
+  // // '#e8ff9a', // green
+  // // '#A2E8DD', // teal
+  // // '#4DE64D', // neon green
+  // '#FFB347', // golden amber
+]
+export const FIREFLY_COLOR = FIREFLY_COLORS[0]
+// How fast they walk the palette (cycles per second across the whole list).
+export const FIREFLY_COLOR_SHIFT_SPEED = 0.08
 export const FIREFLY_GLOW_SIZE = 64
 // Dim floor so bugs never vanish mid-pulse (relative brightness).
 export const FIREFLY_PULSE_MIN = 0.28
@@ -21,7 +37,7 @@ export const FIREFLY_LIGHT_COUNT = FIREFLY_COUNT * 0
 export const FIREFLY_LIGHT_BRIGHTNESS = 20
 export const FIREFLY_LIGHT_DISTANCE = 14
 export const FIREFLY_LIGHT_DECAY = 2
-export const FIREFLY_LIGHT_COLOR = '#FFAA00'
+export const FIREFLY_LIGHT_COLOR = FIREFLY_COLORS[0]
 
 // Soft round sprite: hot core + torch-like halo (additive).
 export function createFireflyGlowTexture(size = FIREFLY_GLOW_SIZE) {
@@ -44,11 +60,12 @@ export function createFireflyGlowTexture(size = FIREFLY_GLOW_SIZE) {
   }
   const mid = size / 2
   const gradient = ctx.createRadialGradient(mid, mid, 0, mid, mid, mid)
-  gradient.addColorStop(0, 'rgba(255,255,230,1)')
-  gradient.addColorStop(0.12, 'rgba(255,240,140,0.95)')
-  gradient.addColorStop(0.35, 'rgba(210,255,120,0.45)')
-  gradient.addColorStop(0.65, 'rgba(160,255,90,0.12)')
-  gradient.addColorStop(1, 'rgba(120,255,80,0)')
+  // Neutral white halo so vertex colors tint cleanly.
+  gradient.addColorStop(0, 'rgba(255,255,255,1)')
+  gradient.addColorStop(0.12, 'rgba(255,255,255,0.95)')
+  gradient.addColorStop(0.35, 'rgba(255,255,255,0.45)')
+  gradient.addColorStop(0.65, 'rgba(255,255,255,0.12)')
+  gradient.addColorStop(1, 'rgba(255,255,255,0)')
   ctx.clearRect(0, 0, size, size)
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, size, size)
@@ -101,6 +118,50 @@ export function createFireflyField(
 export function fireflyPulse(time, phase, pulseSpeed) {
   const wave = 0.5 + 0.5 * Math.sin(time * pulseSpeed + phase)
   return FIREFLY_PULSE_MIN + (1 - FIREFLY_PULSE_MIN) * wave
+}
+
+// Precompute RGB triples (0–1) from the editable hex list.
+export function parseFireflyPalette(colors = FIREFLY_COLORS) {
+  const list = colors?.length ? colors : [FIREFLY_COLOR]
+  return list.map((hex) => {
+    const color = new THREE.Color(hex)
+    return [color.r, color.g, color.b]
+  })
+}
+
+// Walk the palette with a staggered phase; writes into `out` [r,g,b].
+export function fireflyColorAt(
+  time,
+  phase,
+  palette,
+  speed = FIREFLY_COLOR_SHIFT_SPEED,
+  out = [0, 0, 0],
+) {
+  const n = palette.length
+  if (n === 0) {
+    out[0] = 1
+    out[1] = 1
+    out[2] = 1
+    return out
+  }
+  if (n === 1) {
+    out[0] = palette[0][0]
+    out[1] = palette[0][1]
+    out[2] = palette[0][2]
+    return out
+  }
+
+  const cycle = ((time * speed + phase / (Math.PI * 2)) % 1 + 1) % 1
+  const scaled = cycle * n
+  const i0 = Math.floor(scaled) % n
+  const i1 = (i0 + 1) % n
+  const mix = scaled - Math.floor(scaled)
+  const a = palette[i0]
+  const b = palette[i1]
+  out[0] = a[0] + (b[0] - a[0]) * mix
+  out[1] = a[1] + (b[1] - a[1]) * mix
+  out[2] = a[2] + (b[2] - a[2]) * mix
+  return out
 }
 
 // Spread light hosts across the cloud so pools don't all stack on one bug.
