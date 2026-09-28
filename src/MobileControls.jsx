@@ -82,7 +82,6 @@ function MoveStick({ inputRef }) {
       aria-valuemax={1}
     >
       <span ref={knobRef} className="mobile-stick-knob" />
-      <span className="mobile-pad-label">Move</span>
     </div>
   )
 }
@@ -110,9 +109,12 @@ function LookPad({ inputRef }) {
   }, [inputRef])
 
   return (
-    <div ref={rootRef} className="mobile-look" role="presentation" aria-label="Look around">
-      <span className="mobile-pad-label">Look</span>
-    </div>
+    <div
+      ref={rootRef}
+      className="mobile-look"
+      role="presentation"
+      aria-label="Look around"
+    />
   )
 }
 

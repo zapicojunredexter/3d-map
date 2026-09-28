@@ -737,32 +737,20 @@ kbd:nth-child(2) {
 
 .mobile-look {
   position: absolute;
-  right: max(12px, env(safe-area-inset-right));
+  right: max(16px, env(safe-area-inset-right));
   bottom: max(18px, env(safe-area-inset-bottom));
-  width: min(46vw, 210px);
-  height: min(38vh, 220px);
+  width: 132px;
+  height: 132px;
   border: 1px solid rgb(255 255 255 / 16%);
-  border-radius: 18px;
+  border-radius: 50%;
   background: rgb(8 16 11 / 28%);
   backdrop-filter: blur(8px);
 }
 
-.mobile-pad-label {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  color: rgb(238 243 233 / 55%);
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  pointer-events: none;
-}
-
 .mobile-actions {
   position: absolute;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + min(38vh, 220px) + 10px);
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 142px);
   display: flex;
   flex-direction: column;
   gap: 8px;

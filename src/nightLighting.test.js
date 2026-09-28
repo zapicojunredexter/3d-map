@@ -6,8 +6,10 @@ import {
   TORCH_FILL_BRIGHTNESS,
   TORCH_MODEL_HEIGHT,
   TORCH_OFFSET,
+  TORCH_OFFSET_MOBILE,
   canUseTorch,
   torchFlicker,
+  torchHandOffset,
   torchIsLit,
 } from './nightLighting'
 import { prepareTorchModel } from './PlayerTorch'
@@ -33,6 +35,14 @@ describe('nightLighting', () => {
     expect(torchIsLit(1.2, true)).toBe(true)
     expect(torchIsLit(1.2, false)).toBe(false)
     expect(torchIsLit(0, true)).toBe(false)
+  })
+
+  it('pulls the hand torch in-frame on narrow or portrait viewports', () => {
+    expect(torchHandOffset(1280, 720)).toEqual(TORCH_OFFSET)
+    expect(torchHandOffset(390, 844)).toEqual(TORCH_OFFSET_MOBILE)
+    expect(torchHandOffset(800, 600)).toEqual(TORCH_OFFSET_MOBILE)
+    expect(TORCH_OFFSET_MOBILE[0]).toBeLessThan(TORCH_OFFSET[0])
+    expect(TORCH_OFFSET_MOBILE[2]).toBeGreaterThan(TORCH_OFFSET[2])
   })
 })
 

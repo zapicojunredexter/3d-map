@@ -7,7 +7,11 @@ export const TORCH_FILL_COLOR = '#ffb14a'
 // Camera-local offsets, converted to world each frame.
 // +X is the player's right — torch sits in the right hand.
 export const TORCH_OFFSET = [0.42, -0.38, -0.8]
+// Narrow / portrait FOV clips the desktop hand pose; keep it in-frame above the
+// look pad (closer, less right, slightly higher).
+export const TORCH_OFFSET_MOBILE = [0.18, -0.16, -0.55]
 export const TORCH_FILL_OFFSET = [0, -0.9, 0]
+export const TORCH_MOBILE_WIDTH = 900
 
 // Spin the model so the handle faces the palm (right-hand grip).
 export const TORCH_MODEL_YAW = Math.PI
@@ -21,6 +25,17 @@ export const TORCH_FILL_BRIGHTNESS = 55
 
 // Hand-held size for assets/torch.glb (native model is ~6.4 m tall).
 export const TORCH_MODEL_HEIGHT = 0.55
+export const TORCH_MODEL_SCALE_MOBILE = 0.78
+
+export function isTorchMobileViewport(width, height, maxWidth = TORCH_MOBILE_WIDTH) {
+  return width > 0 && (width < height || width <= maxWidth)
+}
+
+export function torchHandOffset(width, height) {
+  return isTorchMobileViewport(width, height)
+    ? TORCH_OFFSET_MOBILE
+    : TORCH_OFFSET
+}
 
 export function torchFlicker(timeSeconds) {
   const wave =

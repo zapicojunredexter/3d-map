@@ -14,10 +14,12 @@ import {
   TORCH_FILL_COLOR,
   TORCH_FILL_DISTANCE,
   TORCH_FILL_OFFSET,
-  TORCH_OFFSET,
   TORCH_MODEL_HEIGHT,
+  TORCH_MODEL_SCALE_MOBILE,
   TORCH_MODEL_YAW,
+  isTorchMobileViewport,
   torchFlicker,
+  torchHandOffset,
 } from './nightLighting'
 
 export const TORCH_MODEL_URL = torchUrl
@@ -52,7 +54,7 @@ function TorchVisual({ active, strength, color }) {
   const group = useRef()
   const torchLight = useRef()
   const fillLight = useRef()
-  const { camera } = useThree()
+  const { camera, size } = useThree()
   const scratch = useMemo(() => new THREE.Vector3(), [])
   const yaw = useMemo(() => new THREE.Euler(0, 0, 0, 'YXZ'), [])
 
@@ -79,12 +81,20 @@ function TorchVisual({ active, strength, color }) {
 
     mixer.update(delta)
     const flicker = torchFlicker(state.clock.elapsedTime)
+    const mobile = isTorchMobileViewport(size.width, size.height)
+    const offset = torchHandOffset(size.width, size.height)
+    const modelScale = mobile ? TORCH_MODEL_SCALE_MOBILE : 1
 
     // Follow the view, keep fire upright, face the right-hand grip outward.
     yaw.setFromQuaternion(camera.quaternion)
-    group.current.rotation.set(0.22, yaw.y + TORCH_MODEL_YAW, -0.12)
+    group.current.rotation.set(
+      mobile ? 0.12 : 0.22,
+      yaw.y + TORCH_MODEL_YAW,
+      mobile ? -0.06 : -0.12,
+    )
+    group.current.scale.setScalar(modelScale)
 
-    scratch.set(...TORCH_OFFSET).applyQuaternion(camera.quaternion)
+    scratch.set(...offset).applyQuaternion(camera.quaternion)
     group.current.position.copy(camera.position).add(scratch)
 
     torchLight.current.intensity = strength * TORCH_BRIGHTNESS * flicker
