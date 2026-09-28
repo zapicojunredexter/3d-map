@@ -17,6 +17,13 @@ import {
   moveWithCollisions,
   spawnSearchOffsets,
 } from './player'
+import {
+  applyMobileLook,
+  consumeMobileLook,
+  createMobileInput,
+} from './mobileInput'
+import { useMobileViewport } from './viewport'
+import MobileControls from './MobileControls'
 import { calculateModelPlacement, isRoadSurface } from './world'
 import {
   collidableMeshes,
@@ -194,6 +201,9 @@ function ExplorerControls({
   onLockedChange,
   onAimChange,
   poseRef,
+  mobile = false,
+  playing = false,
+  mobileInputRef,
 }) {
   const { camera } = useThree()
   const controlsRef = useRef()
@@ -201,6 +211,7 @@ function ExplorerControls({
   const placed = useRef(false)
   const aimed = useRef(false)
   const keys = useRef(new Set())
+  const lookEuler = useMemo(() => new THREE.Euler(0, 0, 0, 'YXZ'), [])
   const raycaster = useMemo(() => {
     const next = new THREE.Raycaster()
     next.firstHitOnly = true
@@ -327,14 +338,32 @@ function ExplorerControls({
       resetPlayer()
       return
     }
-    const locked = Boolean(controlsRef.current?.isLocked)
+    const active = mobile ? playing : Boolean(controlsRef.current?.isLocked)
     const pressed = keys.current
+    const touch = mobileInputRef?.current
 
-    if (locked) {
+    if (active && mobile && touch) {
+      const { dx, dy } = consumeMobileLook(touch)
+      if (dx || dy) {
+        lookEuler.setFromQuaternion(camera.quaternion)
+        applyMobileLook(lookEuler, dx, dy)
+        camera.quaternion.setFromEuler(lookEuler)
+      }
+      if (touch.jump) {
+        state.jumpRequested = true
+        touch.jump = false
+      }
+    }
+
+    if (active) {
       const forwardInput =
-        Number(pressed.has('KeyW')) - Number(pressed.has('KeyS'))
+        Number(pressed.has('KeyW')) -
+        Number(pressed.has('KeyS')) +
+        (touch?.moveY ?? 0)
       const sideInput =
-        Number(pressed.has('KeyD')) - Number(pressed.has('KeyA'))
+        Number(pressed.has('KeyD')) -
+        Number(pressed.has('KeyA')) +
+        (touch?.moveX ?? 0)
 
       camera.getWorldDirection(forward)
       forward.y = 0
@@ -346,7 +375,8 @@ function ExplorerControls({
         .addScaledVector(right, sideInput)
 
       if (wish.lengthSq() > 0) {
-        const speed = pressed.has('ShiftLeft') ? PLAYER.sprintSpeed : PLAYER.walkSpeed
+        const sprinting = pressed.has('ShiftLeft') || Boolean(touch?.sprint)
+        const speed = sprinting ? PLAYER.sprintSpeed : PLAYER.walkSpeed
         const next = moveWithCollisions(
           state.position,
           wish.normalize().multiplyScalar(speed * dt),
@@ -392,6 +422,8 @@ function ExplorerControls({
     }
   })
 
+  if (mobile) return null
+
   return (
     <PointerLockControls
       ref={controlsRef}
@@ -409,6 +441,9 @@ function Scene({
   onAimChange,
   poseRef,
   placementRef,
+  mobile,
+  playing,
+  mobileInputRef,
 }) {
   const worldRef = useRef()
   const collidersRef = useRef(null)
@@ -439,6 +474,9 @@ function Scene({
         onLockedChange={onLockedChange}
         onAimChange={onAimChange}
         poseRef={poseRef}
+        mobile={mobile}
+        playing={playing}
+        mobileInputRef={mobileInputRef}
       />
     </>
   )
@@ -449,6 +487,7 @@ function Crosshair() {
 }
 
 export default function App() {
+  const mobile = useMobileViewport()
   const [locked, setLocked] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aimedFeature, setAimedFeature] = useState(null)
@@ -457,6 +496,7 @@ export default function App() {
   const hasEnteredRef = useRef(false)
   const poseRef = useRef({ x: 0, z: 0, heading: 0 })
   const placementRef = useRef(null)
+  const mobileInputRef = useRef(createMobileInput())
   const requestPointerLock = () =>
     document.querySelector('canvas')?.requestPointerLock()
 
@@ -470,6 +510,20 @@ export default function App() {
     }
   }
 
+  const enterExplorer = () => {
+    if (mobile) handleLockedChange(true)
+    else requestPointerLock()
+  }
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('is-mobile-viewport', mobile)
+    document.documentElement.classList.toggle('is-playing-mobile', mobile && locked)
+    return () => {
+      document.documentElement.classList.remove('is-mobile-viewport')
+      document.documentElement.classList.remove('is-playing-mobile')
+    }
+  }, [mobile, locked])
+
   return (
     <main>
       <Canvas
@@ -480,7 +534,7 @@ export default function App() {
           far: 2500,
           position: [0, PLAYER.spawnHeight, 0],
         }}
-        dpr={[1, 2]}
+        dpr={mobile ? [1, 1.5] : [1, 2]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
       >
         <Scene
@@ -491,6 +545,9 @@ export default function App() {
           onAimChange={setAimedFeature}
           poseRef={poseRef}
           placementRef={placementRef}
+          mobile={mobile}
+          playing={locked}
+          mobileInputRef={mobileInputRef}
         />
       </Canvas>
 
@@ -503,28 +560,41 @@ export default function App() {
         <button
           className="enter"
           type="button"
-          onClick={requestPointerLock}
+          onClick={enterExplorer}
         >
           <span>Enter the map</span>
-          <small>Click to look around · Esc opens settings</small>
+          <small>
+            {mobile
+              ? 'On-screen stick to move · drag Look to face around'
+              : 'Click to look around · Esc opens settings'}
+          </small>
         </button>
       )}
 
-      <aside className="controls" aria-label="Controls">
-        <div className="key-grid" aria-hidden="true">
-          <kbd>W</kbd>
-          <kbd>A</kbd>
-          <kbd>S</kbd>
-          <kbd>D</kbd>
-        </div>
-        <div>
-          <strong>Move</strong>
-          <span>
-            Mouse look · Shift sprint · Space jump · R reset · F torch
-            (night) · Esc pause/settings
-          </span>
-        </div>
-      </aside>
+      {!mobile && (
+        <aside className="controls" aria-label="Controls">
+          <div className="key-grid" aria-hidden="true">
+            <kbd>W</kbd>
+            <kbd>A</kbd>
+            <kbd>S</kbd>
+            <kbd>D</kbd>
+          </div>
+          <div>
+            <strong>Move</strong>
+            <span>
+              Mouse look · Shift sprint · Space jump · R reset · F torch
+              (night) · Esc pause/settings
+            </span>
+          </div>
+        </aside>
+      )}
+
+      {mobile && locked && !settingsOpen && (
+        <MobileControls
+          inputRef={mobileInputRef}
+          onPause={() => handleLockedChange(false)}
+        />
+      )}
 
       {settingsOpen && (
         <SettingsPanel
@@ -532,7 +602,7 @@ export default function App() {
           onHourChange={setHour}
           buildingStyle={buildingStyle}
           onBuildingStyleChange={setBuildingStyle}
-          onResume={requestPointerLock}
+          onResume={enterExplorer}
         />
       )}
       <Minimap poseRef={poseRef} placementRef={placementRef} />
